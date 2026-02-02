@@ -13,6 +13,7 @@ interface Props {
     userEmail: string;
     lobbyId: string;
     initialMessages?: Message[];
+    onLeaveLobby: () => void;
 }
 
 // Simple Markdown to JSX converter for bold and italic
@@ -74,7 +75,7 @@ const renderMarkdown = (text: string) => {
     return <>{italicProcessed}</>;
 };
 
-const GameInterface: React.FC<Props> = ({ party, userEmail, lobbyId, initialMessages = [] }) => {
+const GameInterface: React.FC<Props> = ({ party, userEmail, lobbyId, initialMessages = [], onLeaveLobby }) => {
     const [messages, setMessages] = useState<Message[]>(initialMessages);
     const [characters, setCharacters] = useState<Character[]>(party);
     const [input, setInput] = useState('');
@@ -286,6 +287,13 @@ const GameInterface: React.FC<Props> = ({ party, userEmail, lobbyId, initialMess
                 <div className="flex items-center justify-between mb-6">
                     <h2 className="text-xl font-fantasy text-dnd-gold">The Party</h2>
                     <div className="flex items-center gap-2">
+                        <button
+                            onClick={onLeaveLobby}
+                            className="p-1.5 bg-slate-800 hover:bg-slate-700 border border-gray-700 text-gray-400 hover:text-white rounded transition text-xs"
+                            title="Leave to Lobby"
+                        >
+                            ← Lobby
+                        </button>
                         <span className={`w-2 h-2 rounded-full ${isLoading ? 'bg-yellow-500 animate-pulse' : 'bg-green-500'}`}></span>
                     </div>
                 </div>

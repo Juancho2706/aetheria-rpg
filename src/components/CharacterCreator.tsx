@@ -2,8 +2,8 @@
 
 import React, { useState } from 'react';
 import { Character, ClassType, Stats, StatName, CLASS_DESCRIPTIONS } from '../types';
-import { Minus, Plus, RefreshCw, Shield, Heart, Image as ImageIcon, Sparkles } from 'lucide-react';
-import { generateImageAction } from '../app/actions';
+import { Minus, Plus, RefreshCw, Dices, Upload, Shield, Heart } from 'lucide-react';
+// Removed generateImageAction import as AI feature is disabled
 
 interface Props {
     ownerEmail: string;
@@ -27,7 +27,6 @@ const CharacterCreator: React.FC<Props> = ({ ownerEmail, onComplete, onCancel })
     });
     const [bio, setBio] = useState('');
     const [avatarUrl, setAvatarUrl] = useState<string | undefined>(undefined);
-    const [isGeneratingAvatar, setIsGeneratingAvatar] = useState(false);
 
     const calculateModifier = (val: number) => Math.floor((val - 10) / 2);
 
@@ -57,19 +56,46 @@ const CharacterCreator: React.FC<Props> = ({ ownerEmail, onComplete, onCancel })
         setStats({ STR: 8, DEX: 8, CON: 8, INT: 8, WIS: 8, CHA: 8 });
     };
 
-    const generateAvatar = async () => {
-        setIsGeneratingAvatar(true);
-        const prompt = `A high quality digital painting character portrait of a Dungeons and Dragons ${classType} named ${name || 'Hero'}. ${bio}. Close up, detailed, fantasy art style.`;
+    const handleRandomizeStats = () => {
+        // Reset first
+        let currentStats = { STR: 8, DEX: 8, CON: 8, INT: 8, WIS: 8, CHA: 8 };
+        let remaining = POINT_BUY_TOTAL;
 
-        // Server Action
-        const url = await generateImageAction(prompt);
+        // Try to spend points randomly
+        let safety = 0;
+        while (remaining > 0 && safety < 100) {
+            safety++;
+            const keys = (Object.keys(currentStats) as StatName[]);
+            const randomStat = keys[Math.floor(Math.random() * keys.length)];
+            const currentVal = currentStats[randomStat];
 
-        if (url) {
-            setAvatarUrl(url);
-        } else {
-            alert("Avatar generation failed. Please try again.");
+            if (currentVal >= MAX_SCORE) continue; // Skip if maxed
+
+            const cost = SCORE_COSTS[currentVal + 1] - SCORE_COSTS[currentVal];
+
+            if (remaining >= cost) {
+                currentStats[randomStat]++;
+                remaining -= cost;
+            }
         }
-        setIsGeneratingAvatar(false);
+        setStats(currentStats);
+    };
+
+    const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        // Limit to 1MB
+        if (file.size > 1024 * 1024) {
+            alert("Image is too large. Please choose an image under 1MB.");
+            return;
+        }
+
+        const reader = new FileReader();
+        reader.onloadend = () => {
+            setAvatarUrl(reader.result as string);
+        };
+        reader.readAsDataURL(file);
     };
 
     const handleSubmit = (e: React.FormEvent) => {
@@ -103,29 +129,27 @@ const CharacterCreator: React.FC<Props> = ({ ownerEmail, onComplete, onCancel })
 
                     <form onSubmit={handleSubmit} className="space-y-8">
                         <div className="flex flex-col md:flex-row gap-6">
-                            {/* Avatar Section */}
-                            <div className="flex flex-col items-center space-y-3">
-                                <div className="w-32 h-32 rounded-lg bg-slate-800 border-2 border-gray-600 flex items-center justify-center overflow-hidden relative shadow-inner">
+                            {/* Avatar Upload */}
+                            <div className="flex flex-col items-center gap-4">
+                                <div className="relative w-32 h-32 bg-gray-900 rounded-lg border-2 border-gray-700 flex items-center justify-center overflow-hidden">
                                     {avatarUrl ? (
-                                        <img src={avatarUrl} alt="Avatar" className="w-full h-full object-cover" />
+                                        <img src={avatarUrl} alt="Character Avatar" className="w-full h-full object-cover" />
                                     ) : (
-                                        <ImageIcon className="text-gray-600 w-12 h-12" />
-                                    )}
-                                    {isGeneratingAvatar && (
-                                        <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
-                                            <RefreshCw className="animate-spin text-dnd-gold" />
-                                        </div>
+                                        <Upload className="text-gray-600" size={32} />
                                     )}
                                 </div>
-                                <button
-                                    type="button"
-                                    onClick={generateAvatar}
-                                    disabled={isGeneratingAvatar || !name.trim()}
-                                    className="text-xs bg-slate-700 hover:bg-slate-600 text-dnd-gold px-3 py-1 rounded border border-gray-600 flex items-center gap-1 transition disabled:opacity-50 disabled:cursor-not-allowed"
-                                >
-                                    <Sparkles size={12} />
-                                    Generate Avatar
-                                </button>
+
+                                <label className="flex items-center gap-2 px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded cursor-pointer transition text-sm border border-gray-600">
+                                    <Upload size={16} />
+                                    <span>Upload Portrait</span>
+                                    <input
+                                        type="file"
+                                        accept="image/*"
+                                        className="hidden"
+                                        onChange={handleFileUpload}
+                                    />
+                                </label>
+                                <p className="text-[10px] text-gray-500">Max 1MB</p>
                             </div>
 
                             {/* Basic Info */}
@@ -182,8 +206,16 @@ const CharacterCreator: React.FC<Props> = ({ ownerEmail, onComplete, onCancel })
                                         </span>
                                         <button
                                             type="button"
+                                            onClick={handleRandomizeStats}
+                                            className="ml-2 p-1 text-dnd-gold hover:text-yellow-400 transition animate-pulse hover:animate-none"
+                                            title="Roll Random Stats"
+                                        >
+                                            <Dices size={20} />
+                                        </button>
+                                        <button
+                                            type="button"
                                             onClick={resetStats}
-                                            className="ml-2 p-1 text-gray-500 hover:text-white transition"
+                                            className="p-1 text-gray-500 hover:text-white transition"
                                             title="Reset Stats"
                                         >
                                             <RefreshCw size={16} />

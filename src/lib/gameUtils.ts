@@ -40,6 +40,21 @@ export const checkAllPlayersReady = (party: Character[]): boolean => {
 // --- SUPABASE FUNCTIONS ---
 
 export const saveGame = async (lobbyId: string, party: Character[], messages: any[]) => {
+    // We try to pull existing state to not overwrite 'createdBy' if it exists,
+    // OR we pass it in. For simplicity, we assume the first save or updates preserve the structure.
+    // Ideally, we'd merge, but upsert replaces.
+    // Solution: Fetch current state first? No, that's slow.
+    // Better: We should just store 'createdBy' in the gameState if passed, or rely on it being in 'party' logic?
+    // Actually, 'createdBy' should be set once.
+    // Let's modify the props to accept 'createdBy' if available.
+    // But changing signature breaks calls.
+    // Let's stick to the current signature but add a check or rely on the caller to pass it in 'messages' metadata? No.
+    // Let's UPDATE the signature to be clearer: saveGame(lobbyId, party, messages, createdBy?)
+
+    // HOWEVER, for now, we will just save what we have.
+    // To implement "Resume", we need to know who is in the party.
+    // The 'party' array has 'ownerEmail'. We can query that!
+
     const gameState = {
         party,
         messages: messages.slice(-100), // Keep history limited
@@ -56,6 +71,7 @@ export const saveGame = async (lobbyId: string, party: Character[], messages: an
 
     if (error) {
         console.error("Error saving game to Supabase:", error);
+        throw new Error(error.message);
     }
 };
 
@@ -67,7 +83,6 @@ export const loadGame = async (lobbyId: string) => {
         .single();
 
     if (error) {
-        // If error is code PGRST116, it means no rows returned (new lobby), which is fine.
         if (error.code !== 'PGRST116') {
             console.error("Error loading game:", error);
         }
@@ -75,4 +90,35 @@ export const loadGame = async (lobbyId: string) => {
     }
 
     return data?.game_state || null;
+};
+
+export const getUserLobbies = async (userEmail: string) => {
+    // We want lobbies where the user is in the party.
+    // Since 'party' is a JSON array in 'game_state', we can use the -> operator.
+    // .contains('game_state->party', JSON.stringify([{ ownerEmail: userEmail }])) 
+    // This is tricky with JSON arrays.
+    // Alternate: Fetch all and filter? Bad for scale, good for prototype.
+    // Better: Supabase supports Postgres JSONB containment.
+    // 'game_state->party' is an array. We want to check if any element has ownerEmail == userEmail.
+
+    // Try simple filter first:
+    const { data, error } = await supabase
+        .from('lobbies')
+        .select('id, game_state, updated_at')
+        .order('updated_at', { ascending: false });
+
+    if (error) {
+        console.error("Error fetching user lobbies:", error);
+        return [];
+    }
+
+    // Client-side filter for prototype safety (Supabase JSONB syntax can be finicky)
+    return data.filter((lobby: any) => {
+        const party = lobby.game_state?.party;
+        if (Array.isArray(party)) {
+            return party.some((c: Character) => c.ownerEmail === userEmail);
+        }
+        // Also check if they created it (if we store that, which we will try do next step)
+        return false;
+    });
 };
