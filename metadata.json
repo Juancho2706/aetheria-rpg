@@ -1,0 +1,7 @@
+{
+  "name": "Aetheria RPG",
+  "description": "An AI-powered Dungeon Master web experience using D&D 5e rules. Create a party, explore generated worlds, and fight monsters with Gemini 2.5 Flash Lite as your guide. Featuring character avatars and a shared lobby.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}
