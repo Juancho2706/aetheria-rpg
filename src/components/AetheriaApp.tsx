@@ -318,7 +318,7 @@ const AetheriaApp: React.FC = () => {
     if (gameState.isLoggedIn && !validLobbyId) {
         return (
             <LobbyMenu
-                userEmail={gameState.userEmail}
+                userEmail={gameState.userEmail || null}
                 onCreate={handleCreateLobby}
                 onJoin={(id) => {
                     setInputLobbyId(id);
