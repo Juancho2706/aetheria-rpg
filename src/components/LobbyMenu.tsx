@@ -2,8 +2,8 @@
 
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Sword, Map, ArrowRight, Loader2, Users, Clock, ArrowRightCircle } from 'lucide-react';
-import { getUserLobbies } from '@/lib/gameUtils';
+import { Sword, Map, ArrowRight, Loader2, Users, Clock, ArrowRightCircle, Trash2 } from 'lucide-react';
+import { getUserLobbies, deleteGame } from '@/lib/gameUtils';
 
 interface Props {
     userEmail: string | null;
@@ -32,6 +32,18 @@ const LobbyMenu: React.FC<Props> = ({ userEmail, onJoin, onCreate, onLogout, isL
         e.preventDefault();
         if (joinCode.trim()) {
             onJoin(joinCode.trim());
+        }
+    };
+
+    const handleDeleteLobby = async (lobbyId: string, e: React.MouseEvent) => {
+        e.stopPropagation(); // Prevent triggering onJoin
+        if (confirm('¿Estás seguro de que quieres borrar esta campaña? No se podrá recuperar.')) {
+            try {
+                await deleteGame(lobbyId);
+                setRecentLobbies(prev => prev.filter(l => l.id !== lobbyId));
+            } catch (error) {
+                alert('Error al borrar la campaña');
+            }
         }
     };
 
@@ -69,6 +81,7 @@ const LobbyMenu: React.FC<Props> = ({ userEmail, onJoin, onCreate, onLogout, isL
                                 whileTap={{ scale: 0.98 }}
                                 onClick={onCreate}
                                 disabled={isLoading}
+                                style={{ borderColor: '#374151' }} // Fix for Framer Motion 'lab()' color warning
                                 className="bg-slate-800/80 backdrop-blur-md border border-gray-700 p-8 rounded-2xl text-left group transition-all hover:bg-slate-800 hover:shadow-[0_0_30px_rgba(234,179,8,0.1)] flex flex-col justify-between h-64"
                             >
                                 <div>
@@ -89,6 +102,7 @@ const LobbyMenu: React.FC<Props> = ({ userEmail, onJoin, onCreate, onLogout, isL
                                 whileTap={{ scale: 0.98 }}
                                 onClick={() => setView('join')}
                                 disabled={isLoading}
+                                style={{ borderColor: '#374151' }} // Fix for Framer Motion 'lab()' color warning
                                 className="bg-slate-800/80 backdrop-blur-md border border-gray-700 p-8 rounded-2xl text-left group transition-all hover:bg-slate-800 hover:shadow-[0_0_30px_rgba(59,130,246,0.1)] flex flex-col justify-between h-64"
                             >
                                 <div>
@@ -123,8 +137,17 @@ const LobbyMenu: React.FC<Props> = ({ userEmail, onJoin, onCreate, onLogout, isL
                                                     Último juego: {new Date(lobby.updated_at).toLocaleDateString()}
                                                 </div>
                                             </div>
-                                            <div className="text-gray-600 group-hover:text-white transition">
-                                                <ArrowRightCircle size={20} />
+                                            <div className="flex items-center gap-2">
+                                                <span
+                                                    onClick={(e) => handleDeleteLobby(lobby.id, e)}
+                                                    className="p-2 text-gray-600 hover:text-red-500 hover:bg-red-500/10 rounded transition z-10 cursor-pointer"
+                                                    title="Borrar Campaña"
+                                                >
+                                                    <Trash2 size={18} />
+                                                </span>
+                                                <div className="text-gray-600 group-hover:text-white transition">
+                                                    <ArrowRightCircle size={20} />
+                                                </div>
                                             </div>
                                         </button>
                                     ))}
@@ -177,7 +200,7 @@ const LobbyMenu: React.FC<Props> = ({ userEmail, onJoin, onCreate, onLogout, isL
                     </motion.div>
                 )}
             </div>
-        </div>
+        </div >
     );
 };
 

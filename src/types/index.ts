@@ -22,9 +22,37 @@ export interface Character {
     stats: Stats;
     bio: string;
     avatarUrl?: string;
-    inventory: string[];
+    personality: string;
+    inventory: Item[];
+    equipment: Equipment;
     isReady: boolean; // Multiplayer: has the player submitted an action?
     pendingAction?: string; // Multiplayer: the action waiting to be resolved
+    voiceId: string; // The selected voice for TTS (Puck, Aoede, etc.)
+}
+
+export type Rarity = 'Common' | 'Uncommon' | 'Rare' | 'Epic' | 'Legendary';
+export type ItemType = 'Weapon' | 'Armor' | 'Potion' | 'Scroll' | 'Misc';
+
+export interface Item {
+    id: string;
+    name: string;
+    type: ItemType;
+    rarity: Rarity;
+    description: string;
+    stats?: Partial<Stats>; // Helper stats like +1 STR
+    icon?: string; // Emoji?
+}
+
+export interface Equipment {
+    head?: Item;
+    chest?: Item;
+    mainHand?: Item;
+    offHand?: Item;
+    legs?: Item;
+    feet?: Item;
+    amulet?: Item;
+    ring1?: Item;
+    ring2?: Item;
 }
 
 export interface Message {
@@ -39,6 +67,8 @@ export interface Message {
             detail: string;
         };
         dmState?: DmStateUpdate;
+        audioUrl?: string; // Persistent audio URL
+        audioGenerating?: boolean; // Syncs "Loading..." state across clients
     };
 }
 
@@ -49,6 +79,11 @@ export interface DmStateUpdate {
     location?: string;
     suggestedActions?: string[];
     isCombat?: boolean;
+    requiredRoll?: {
+        characterName: string;
+        reason: string;
+        rollType: string; // e.g., "Dexterity Save", "Perception Check"
+    };
 }
 
 export interface GameState {
@@ -66,10 +101,28 @@ export const INITIAL_STATS: Stats = {
 };
 
 export const CLASS_DESCRIPTIONS: Record<ClassType, string> = {
-    Fighter: "A master of martial combat, skilled with a variety of weapons and armor.",
-    Wizard: "A scholarly magic-user capable of manipulating the structures of reality.",
-    Rogue: "A scoundrel who uses stealth and trickery to overcome obstacles and enemies.",
-    Cleric: "A priestly champion who wields divine magic in service of a higher power.",
-    Paladin: "A holy warrior bound to a sacred oath.",
-    Ranger: "A warrior who combats threats on the edges of civilization."
+    Fighter: "Un maestro del combate marcial, hábil con una variedad de armas y armaduras.",
+    Wizard: "Un usuario de magia académico capaz de manipular las estructuras de la realidad.",
+    Rogue: "Un canalla que usa el sigilo y la astucia para superar obstáculos y enemigos.",
+    Cleric: "Un campeón sacerdotal que empuña magia divina al servicio de un poder superior.",
+    Paladin: "Un guerrero santo atado a un juramento sagrado.",
+    Ranger: "Un guerrero que combate amenazas en los límites de la civilización."
+};
+
+export const CLASS_NAMES: Record<ClassType, string> = {
+    Fighter: "Guerrero",
+    Wizard: "Mago",
+    Rogue: "Pícaro",
+    Cleric: "Clérigo",
+    Paladin: "Paladín",
+    Ranger: "Explorador"
+};
+
+export const CLASS_PRESETS: Record<ClassType, Stats> = {
+    Fighter: { STR: 15, DEX: 13, CON: 14, INT: 8, WIS: 12, CHA: 10 },
+    Wizard: { STR: 8, DEX: 13, CON: 14, INT: 15, WIS: 12, CHA: 10 },
+    Rogue: { STR: 8, DEX: 15, CON: 12, INT: 13, WIS: 10, CHA: 14 },
+    Cleric: { STR: 14, DEX: 10, CON: 13, INT: 10, WIS: 15, CHA: 10 }, // Modified to keep sum=27 approx or strict standard array
+    Paladin: { STR: 15, DEX: 10, CON: 13, INT: 8, WIS: 10, CHA: 14 },
+    Ranger: { STR: 12, DEX: 15, CON: 13, INT: 10, WIS: 14, CHA: 8 }
 };

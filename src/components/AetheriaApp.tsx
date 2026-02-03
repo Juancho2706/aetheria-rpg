@@ -343,14 +343,25 @@ const AetheriaApp: React.FC = () => {
             <div className="min-h-screen bg-dnd-dark text-white p-8 font-body">
                 <header className="flex flex-col md:flex-row justify-between items-center mb-12 border-b border-gray-800 pb-4 gap-4">
                     <div>
-                        <h1 className="text-3xl font-fantasy text-dnd-gold">Gather Your Party</h1>
+                        <h1 className="text-3xl font-fantasy text-dnd-gold">Reúne a tu Grupo</h1>
                         <p className="text-xs text-gray-400 mt-1 flex items-center gap-2">
-                            Lobby ID: <span className="text-white font-mono bg-slate-800 px-2 py-1 rounded">{gameState.lobbyId}</span>
+                            ID de Lobby:
+                            <span
+                                onClick={() => {
+                                    navigator.clipboard.writeText(gameState.lobbyId!);
+                                    setShowCopyConfirm(true);
+                                    setTimeout(() => setShowCopyConfirm(false), 2000);
+                                }}
+                                className="text-white font-mono bg-slate-800 px-2 py-1 rounded cursor-pointer hover:bg-slate-700 hover:text-dnd-gold transition flex items-center gap-1"
+                                title="Click para copiar ID"
+                            >
+                                {gameState.lobbyId} <ClipboardCheck size={10} className="opacity-50" />
+                            </span>
                         </p>
                     </div>
                     <div className="flex items-center gap-4">
                         <div className="text-right hidden md:block">
-                            <p className="text-xs text-gray-400 uppercase font-bold">Logged in as</p>
+                            <p className="text-xs text-gray-400 uppercase font-bold">Conectado como</p>
                             <p className="text-sm text-dnd-gold">{gameState.userEmail}</p>
                         </div>
                         <div className="flex gap-2">
@@ -378,7 +389,7 @@ const AetheriaApp: React.FC = () => {
                         </div>
                         {showCopyConfirm && (
                             <div className="fixed top-20 right-8 bg-green-600 text-white text-xs px-3 py-2 rounded shadow-lg flex items-center gap-1 z-50 animate-bounce">
-                                <ClipboardCheck size={12} /> Link Copied!
+                                <ClipboardCheck size={12} /> ¡Copiado al portapapeles!
                             </div>
                         )}
                     </div>
@@ -432,17 +443,16 @@ const AetheriaApp: React.FC = () => {
                                 <div className="w-20 h-20 rounded-full border-2 border-gray-600 group-hover:border-dnd-gold flex items-center justify-center mb-4 transition">
                                     <Users size={32} />
                                 </div>
-                                <span className="font-bold text-lg">Create Hero</span>
-                                <span className="text-sm opacity-60 mt-1">Join the party</span>
+                                <span className="font-bold text-lg">Crear Héroe</span>
+                                <span className="text-sm opacity-60 mt-1">Únete a la aventura</span>
                             </button>
                         )}
 
-                        {/* Waiting slot */}
                         {(gameState.party?.length || 0) < 4 && myCharacter && (
                             <div className="bg-slate-900/20 border-2 border-dashed border-gray-800 rounded-lg p-6 flex flex-col items-center justify-center text-gray-600 h-80">
                                 <Loader2 className="animate-spin mb-4" size={32} />
-                                <span className="text-center">Waiting for others...</span>
-                                <span className="text-xs mt-2">{(gameState.party?.length || 0)}/4 Heroes</span>
+                                <span className="text-center">Esperando al resto...</span>
+                                <span className="text-xs mt-2">{(gameState.party?.length || 0)}/4 Héroes</span>
                             </div>
                         )}
                     </div>
@@ -457,18 +467,18 @@ const AetheriaApp: React.FC = () => {
                                         disabled={isLoading}
                                         className="bg-gradient-to-r from-dnd-gold to-yellow-600 text-dnd-dark text-xl font-fantasy px-16 py-4 rounded-lg shadow-lg hover:shadow-yellow-500/20 hover:scale-105 transition duration-300 border border-yellow-400 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 mx-auto"
                                     >
-                                        {isLoading ? <Loader2 className="animate-spin" /> : 'Venture Forth'}
+                                        {isLoading ? <Loader2 className="animate-spin" /> : 'Comenzar Aventura'}
                                     </button>
                                 ) : (
                                     <div className="flex flex-col items-center gap-2 bg-slate-900/50 p-6 rounded-lg border border-gray-800">
                                         <Loader2 className="animate-spin text-dnd-gold mb-2" />
-                                        <div className="text-dnd-gold font-fantasy text-xl animate-pulse">Waiting for Party Leader...</div>
-                                        <p className="text-xs text-gray-500">Only the first hero ({gameState.party?.[0]?.name}) can start the adventure.</p>
+                                        <div className="text-dnd-gold font-fantasy text-xl animate-pulse">Esperando al Líder...</div>
+                                        <p className="text-xs text-gray-500">Solo el primer héroe ({gameState.party?.[0]?.name}) puede iniciar.</p>
                                     </div>
                                 );
                             })()
                         ) : (
-                            <p className="text-gray-500 italic">The world awaits your heroes...</p>
+                            <p className="text-gray-500 italic">El mundo espera a sus héroes...</p>
                         )}
                     </div>
                 </div>

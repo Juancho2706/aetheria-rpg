@@ -122,3 +122,15 @@ export const getUserLobbies = async (userEmail: string) => {
         return false;
     });
 };
+
+export const deleteGame = async (lobbyId: string) => {
+    const { error } = await supabase
+        .from('lobbies')
+        .delete()
+        .eq('id', lobbyId);
+
+    if (error) {
+        console.error("Error deleting game:", error);
+        throw new Error(error.message);
+    }
+};

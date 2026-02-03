@@ -2,11 +2,12 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Character, Message, DmStateUpdate } from '../types';
-import { initializeCampaignAction, resolveTurnAction } from '../app/actions';
+import { initializeCampaignAction, resolveTurnAction, generateNarratorAudioAction } from '../app/actions';
 import { saveGame, checkAllPlayersReady } from '../lib/gameUtils';
 import { supabase } from '../lib/supabase';
 import DiceRoller from './DiceRoller';
-import { Send, MapPin, Skull, Shield, Heart, ScrollText, CheckCircle, Clock } from 'lucide-react';
+import CharacterSheet from './CharacterSheet';
+import { Send, MapPin, Skull, Shield, Heart, CheckCircle, Clock, HelpCircle, Volume2, Loader2, StopCircle, Settings } from 'lucide-react';
 
 interface Props {
     party: Character[];
@@ -16,7 +17,6 @@ interface Props {
     onLeaveLobby: () => void;
 }
 
-// Simple Markdown to JSX converter for bold and italic
 // Simple Markdown to JSX converter for bold and italic
 const renderMarkdown = (text: string) => {
     // Split by bold first
@@ -50,7 +50,124 @@ const GameInterface: React.FC<Props> = ({ party, userEmail, lobbyId, initialMess
     const [isLoading, setIsLoading] = useState(false);
     const [location, setLocation] = useState('Desconocido');
     const [suggestedActions, setSuggestedActions] = useState<string[]>([]);
+    const [selectedCharacter, setSelectedCharacter] = useState<Character | null>(null);
     const scrollRef = useRef<HTMLDivElement>(null);
+
+    // Audio State
+    const [playingAudioId, setPlayingAudioId] = useState<string | null>(null);
+    const [audioCache, setAudioCache] = useState<Map<string, string>>(new Map()); // Message ID -> Base64 Audio/URL
+    const [volume, setVolume] = useState(1);
+    const [showSettings, setShowSettings] = useState(false);
+    const audioRef = useRef<HTMLAudioElement | null>(null);
+
+    const handlePlayAudio = async (msgId: string, text: string) => {
+        if (playingAudioId === msgId) {
+            // Stop logic
+            if (audioRef.current) {
+                audioRef.current.pause();
+                audioRef.current.currentTime = 0;
+            }
+            setPlayingAudioId(null);
+            return;
+        }
+
+        // Stop any previous audio
+        if (audioRef.current) {
+            audioRef.current.pause();
+        }
+
+        setPlayingAudioId(msgId); // Local loading/playing state
+
+        try {
+            // 1. Check if we already have a URL in the message metadata (Sync from other users)
+            const currentMsg = messages.find(m => m.id === msgId);
+            let audioSrc = currentMsg?.metadata?.audioUrl || audioCache.get(msgId);
+
+            // 2. If not, generate it (Server will check Storage or Generate New)
+            if (!audioSrc) {
+
+                // NEW: Broadcast "Generating..." state so others don't click
+                const generatingMessages = messages.map(m =>
+                    m.id === msgId
+                        ? { ...m, metadata: { ...m.metadata, audioGenerating: true } }
+                        : m
+                );
+                // Optimistic update
+                setMessages(generatingMessages);
+                // Broadcast
+                saveGame(lobbyId, characters, generatingMessages);
+
+                // Build Voice Map
+                const voiceMap: Record<string, string> = {};
+                characters.forEach(c => {
+                    if (c.voiceId) voiceMap[c.name] = c.voiceId;
+                });
+
+                // Call Server Action
+                const result = await generateNarratorAudioAction(text, voiceMap, msgId);
+
+                if (result.startsWith('http')) {
+                    audioSrc = result;
+
+                    // SAVE PERSISTENCE!
+                    // Update local message state: Add URL AND Remove Generating flag
+                    const updatedMessages = messages.map(m =>
+                        m.id === msgId
+                            ? { ...m, metadata: { ...m.metadata, audioUrl: audioSrc, audioGenerating: false } }
+                            : m
+                    );
+                    setMessages(updatedMessages);
+
+                    // Trigger Save to Supabase so others get the URL and see it finished
+                    saveGame(lobbyId, characters, updatedMessages);
+
+                } else {
+                    // It's Base64 WAV (Server generated) - Use Data URI directly
+                    audioSrc = `data:audio/wav;base64,${result}`;
+
+                    const updatedMessages = messages.map(m =>
+                        m.id === msgId
+                            ? { ...m, metadata: { ...m.metadata, audioGenerating: false } } // Clear flag
+                            : m
+                    );
+                    setMessages(updatedMessages);
+                    saveGame(lobbyId, characters, updatedMessages);
+                }
+
+                // Update Cache
+                setAudioCache(prev => new Map(prev).set(msgId, audioSrc!));
+            }
+
+            // Play
+            const audio = new Audio(audioSrc);
+            audio.volume = volume;
+            audioRef.current = audio;
+
+            audio.onended = () => setPlayingAudioId(null);
+            audio.onerror = (e) => {
+                console.error("Audio Load Error:", e);
+                setPlayingAudioId(null);
+                alert("Error al cargar el audio.");
+            };
+
+            await audio.play();
+
+        } catch (error) {
+            console.error("Audio playback error:", error);
+            setPlayingAudioId(null);
+
+            // Clear generating flag on error
+            const updatedMessages = messages.map(m =>
+                m.id === msgId
+                    ? { ...m, metadata: { ...m.metadata, audioGenerating: false } }
+                    : m
+            );
+            setMessages(updatedMessages);
+            saveGame(lobbyId, characters, updatedMessages);
+
+            alert("No se pudo generar el audio del narrador.");
+        }
+    };
 
     const myCharacter = characters.find(c => c.ownerEmail === userEmail);
     const canAct = myCharacter && !myCharacter.isReady && !isLoading;
@@ -98,9 +215,13 @@ const GameInterface: React.FC<Props> = ({ party, userEmail, lobbyId, initialMess
     useEffect(() => {
         // Sync Location and Suggestions from latest message
         if (messages.length > 0) {
-            const lastMessage = messages[messages.length - 1];
-            if (lastMessage?.metadata?.dmState) {
-                handleDmUpdate(lastMessage.metadata.dmState);
+            // Reverse loop to find the last DM state (in case user chatted after)
+            for (let i = messages.length - 1; i >= 0; i--) {
+                const msg = messages[i];
+                if (msg.metadata?.dmState) {
+                    handleDmUpdate(msg.metadata.dmState);
+                    break;
+                }
             }
         }
     }, [messages]);
@@ -137,35 +258,11 @@ const GameInterface: React.FC<Props> = ({ party, userEmail, lobbyId, initialMess
         setMessages(newMessages);
         // Explicit Save
         saveGame(lobbyId, characters, newMessages);
-
-        // UI update handled by useEffect on messages change
     };
 
     const handleDmUpdate = async (state: DmStateUpdate) => {
         if (state.location && state.location !== location) setLocation(state.location);
         if (state.suggestedActions) setSuggestedActions(state.suggestedActions);
-
-        // We do NOT update characters here and save, because that would double-save.
-        // The message containing the state is already saved.
-        // However, we need to apply visual updates locally.
-
-        // Only parse if we haven't already applied this state? 
-        // Actually, local state should reflect the LATEST DmState.
-
-        // But characters might have changed (HP).
-        // Note: The previous logic in App.tsx had a potential loop or double update.
-        // Here we trust the latest message's DM state to be the source of truth for HP/Inventory
-        // IF the message is new.
-
-        // We will update local character state derived from DM state ONLY if beneficial.
-        // But modifying 'characters' state here might conflict with real-time updates from other players acting?
-        // NO, because this only happens after a DM Turn Resolution where no one can act.
-
-        // Re-check logic: 
-        // 1. DM sends message with HP update.
-        // 2. Client receives message.
-        // 3. Client updates local 'characters' state with new HP.
-        // 4. Leader saves this new 'characters' state to DB to persist HP for everyone.
 
         // Optimistic / Leader-driven update:
         if (characters.length > 0 && characters[0].ownerEmail === userEmail) {
@@ -176,7 +273,18 @@ const GameInterface: React.FC<Props> = ({ party, userEmail, lobbyId, initialMess
                 if (hpKey) newChar.hp = state.hpUpdates![hpKey];
 
                 const invKey = Object.keys(state.inventoryUpdates || {}).find(k => char.name.toLowerCase().includes(k.toLowerCase()));
-                if (invKey) newChar.inventory = state.inventoryUpdates![invKey];
+                if (invKey) {
+                    // MOCK IMPLEMENTATION: Convert string[] to Item[]
+                    // Since the AI returns strings, we wrap them in basic Item objects
+                    newChar.inventory = state.inventoryUpdates![invKey].map((itemName, idx) => ({
+                        id: `item-${Date.now()}-${idx}`,
+                        name: itemName,
+                        type: 'Misc',
+                        rarity: 'Common',
+                        description: 'Objeto sin identificar',
+                        icon: '📦'
+                    }));
+                }
 
                 return newChar;
             });
@@ -261,10 +369,33 @@ const GameInterface: React.FC<Props> = ({ party, userEmail, lobbyId, initialMess
     return (
         <div className="flex flex-col md:flex-row h-screen bg-dnd-dark overflow-hidden text-gray-200 font-body">
 
+            {/* Character Sheet Modal */}
+            {selectedCharacter && (
+                <CharacterSheet
+                    character={selectedCharacter}
+                    onClose={() => setSelectedCharacter(null)}
+                />
+            )}
+
             {/* Sidebar */}
             <div className="w-full md:w-1/4 bg-slate-900 border-r border-gray-800 p-4 overflow-y-auto">
                 <div className="flex items-center justify-between mb-6">
-                    <h2 className="text-xl font-fantasy text-dnd-gold">El Grupo</h2>
+                    <div className="flex items-center gap-2">
+                        <div className="relative group">
+                            <HelpCircle size={18} className="text-gray-500 hover:text-dnd-gold cursor-help" />
+                            <div className="absolute left-0 top-6 w-64 bg-slate-950 border border-dnd-gold/30 p-3 rounded shadow-xl text-xs text-gray-300 hidden group-hover:block z-50 pointer-events-none">
+                                <strong className="text-dnd-gold block mb-1">Mecánicas de Juego</strong>
+                                <p className="mb-2">Aetheria es un RPG narrativo colaborativo. El DM (IA) narra la historia y tú decides qué hacer.</p>
+                                <ul className="list-disc list-inside space-y-1">
+                                    <li><strong>Turnos:</strong> Todos declaran su acción. Cuando todos estén listos, el DM resuelve el turno.</li>
+                                    <li><strong>Combate:</strong> Si hay combate, tira iniciativa y ataques usando la bandeja de dados.</li>
+                                    <li><strong>Inventario:</strong> Haz click en tu personaje para ver su hoja detallada.</li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        <h2 className="text-xl font-fantasy text-dnd-gold">El Grupo</h2>
+                    </div>
                     <div className="flex items-center gap-2">
                         <button
                             onClick={onLeaveLobby}
@@ -279,64 +410,125 @@ const GameInterface: React.FC<Props> = ({ party, userEmail, lobbyId, initialMess
 
                 <div className="space-y-4">
                     {characters.map(char => (
-                        <div key={char.id} className={`bg-dnd-panel border ${char.isReady ? 'border-green-600' : 'border-gray-700'} rounded-lg p-3 shadow-lg relative overflow-hidden group transition-colors duration-300`}>
-                            <div className="flex justify-between items-start mb-2 gap-3">
-                                {char.avatarUrl && (
-                                    <img src={char.avatarUrl} alt="Av" className="w-10 h-10 rounded-full object-cover border border-gray-500" />
+                        <div
+                            key={char.id}
+                            onClick={() => setSelectedCharacter(char)}
+                            className={`
+                                cursor-pointer
+                                bg-dnd-panel border ${char.isReady ? 'border-green-600/50' : 'border-gray-700'} 
+                                hover:border-dnd-gold/80 hover:shadow-lg hover:shadow-yellow-900/10 hover:-translate-y-0.5
+                                rounded-lg p-3 shadow relative overflow-hidden group transition-all duration-300
+                            `}
+                        >
+                            {/* Hover Overlay Hint */}
+                            <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-20 pointer-events-none">
+                                <span className="text-xs font-bold text-white bg-black/60 px-2 py-1 rounded border border-white/20">Ver Ficha</span>
+                            </div>
+
+                            <div className="flex justify-between items-start mb-2 gap-3 relative z-10 transition group-hover:blur-[1px]">
+                                {char.avatarUrl ? (
+                                    <img src={char.avatarUrl} alt="Av" className="w-12 h-12 rounded-lg object-cover border border-gray-600 shadow-md" />
+                                ) : (
+                                    <div className="w-12 h-12 bg-slate-800 rounded-lg border border-gray-700 flex items-center justify-center text-xl shadow-md">👤</div>
                                 )}
                                 <div className="flex-1">
-                                    <h3 className="font-bold text-white text-sm">{char.name}</h3>
+                                    <h3 className="font-bold text-gray-100 text-sm">{char.name}</h3>
+                                    <p className="text-[10px] text-gray-400 uppercase tracking-widest mb-1">{char.classType} • Niv {char.level}</p>
+
                                     <div className="flex items-center gap-1">
                                         {char.isReady ? (
-                                            <span className="text-[10px] text-green-400 flex items-center gap-1 font-bold uppercase"><CheckCircle size={10} /> Listo</span>
+                                            <span className="text-[10px] text-green-400 flex items-center gap-1 font-bold uppercase py-0.5 px-1.5 bg-green-950/30 rounded border border-green-900/50"><CheckCircle size={10} /> Listo</span>
                                         ) : (
-                                            <span className="text-[10px] text-gray-400 flex items-center gap-1 font-bold uppercase"><Clock size={10} /> Pensando...</span>
+                                            <span className="text-[10px] text-gray-400 flex items-center gap-1 font-bold uppercase py-0.5 px-1.5 bg-slate-800 rounded border border-gray-700"><Clock size={10} /> Pensando...</span>
                                         )}
                                     </div>
                                 </div>
-                                {char.hp < char.maxHp * 0.3 && <Skull className="text-red-600 animate-pulse" size={16} />}
+                                {char.hp < char.maxHp * 0.3 && <Skull className="text-red-500 animate-pulse" size={16} />}
                             </div>
 
-                            {/* HP Bar */}
-                            <div className="w-full bg-gray-700 h-1.5 rounded-full overflow-hidden mb-2">
+                            {/* HP Bar - Slimmer */}
+                            <div className="w-full bg-gray-800 h-1.5 rounded-full overflow-hidden mb-2 relative z-10">
                                 <div
                                     className={`h-full transition-all duration-500 ${char.hp < char.maxHp * 0.3 ? 'bg-red-600' : 'bg-green-600'}`}
                                     style={{ width: `${Math.max(0, (char.hp / char.maxHp) * 100)}%` }}
                                 ></div>
                             </div>
-                            <div className="flex justify-between text-xs font-mono mb-2">
+
+                            <div className="flex justify-between text-xs font-mono mb-1 relative z-10 text-gray-400">
                                 <span className="flex items-center gap-1"><Heart size={10} className="text-red-500" /> {char.hp}/{char.maxHp}</span>
                                 <span className="flex items-center gap-1"><Shield size={10} className="text-blue-400" /> AC {10 + Math.floor((char.stats.DEX - 10) / 2)}</span>
                             </div>
 
-                            {/* Inventory */}
+                            {/* Recent Loot: Show only last 3 items as small icons */}
                             {char.inventory.length > 0 && (
-                                <div className="pt-2 border-t border-gray-800">
-                                    <div className="flex items-center gap-1 text-dnd-gold text-xs font-bold mb-1">
-                                        <ScrollText size={12} /> Inventario
-                                    </div>
-                                    <ul className="text-xs text-gray-400 list-disc list-inside space-y-0.5">
-                                        {char.inventory.map((item, idx) => (
-                                            <li key={idx}>{item}</li>
+                                <div className="pt-2 border-t border-gray-800 mt-1 relative z-10">
+                                    <div className="flex gap-1 overflow-hidden">
+                                        {char.inventory.slice(-4).reverse().map((item, idx) => (
+                                            <div key={idx} className="w-6 h-6 bg-slate-900 border border-gray-700 rounded flex items-center justify-center text-[10px] text-gray-500" title={item.name}>
+                                                {item.icon || '📦'}
+                                            </div>
                                         ))}
-                                    </ul>
+                                        {char.inventory.length > 4 && (
+                                            <div className="w-6 h-6 flex items-center justify-center text-[9px] text-gray-500 font-bold">+{(char.inventory.length - 4)}</div>
+                                        )}
+                                    </div>
                                 </div>
                             )}
+
                         </div>
                     ))}
-                </div>
-
-                <div className="mt-8 border-t border-gray-800 pt-4">
-                    <div className="flex items-center gap-2 text-dnd-gold mb-2">
-                        <MapPin size={16} />
-                        <span className="font-fantasy text-sm">Ubicación Actual</span>
-                    </div>
-                    <p className="text-sm text-gray-400 italic">{location}</p>
                 </div>
             </div>
 
             {/* Main Chat Area */}
             <div className="flex-1 flex flex-col relative">
+
+                {/* Top Status Bar (Turns & Location) */}
+                <div className="h-12 bg-slate-950 border-b border-gray-800 flex items-center justify-between px-6 shadow-md z-10 relative">
+                    <div className="flex items-center gap-4">
+                        <button
+                            onClick={() => setShowSettings(!showSettings)}
+                            className="text-gray-400 hover:text-dnd-gold transition p-1 rounded"
+                            title="Configuración"
+                        >
+                            <Settings size={18} />
+                        </button>
+
+                        {/* Settings Dropdown */}
+                        {showSettings && (
+                            <div className="absolute top-12 left-4 w-64 bg-slate-900 border border-dnd-gold rounded shadow-xl p-4 z-50">
+                                <h4 className="text-dnd-gold font-bold mb-3 text-sm uppercase">Configuración de Audio</h4>
+                                <div className="flex items-center gap-2">
+                                    <Volume2 size={16} className="text-gray-400" />
+                                    <input
+                                        type="range"
+                                        min="0"
+                                        max="1"
+                                        step="0.1"
+                                        value={volume}
+                                        onChange={(e) => {
+                                            const newVol = parseFloat(e.target.value);
+                                            setVolume(newVol);
+                                            if (audioRef.current) audioRef.current.volume = newVol;
+                                        }}
+                                        className="w-full h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-dnd-gold"
+                                    />
+                                </div>
+                            </div>
+                        )}
+
+                        <div className="flex items-center gap-2 text-dnd-gold border-l border-gray-800 pl-4">
+                            <Clock size={16} />
+                            <span className="font-fantasy tracking-wider text-sm">Turno {messages.filter(m => m.sender === 'dm').length || 1}</span>
+                        </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 text-gray-300">
+                        <MapPin size={16} className="text-dnd-gold" />
+                        <span className="text-sm font-semibold italic truncate">{location}</span>
+                    </div>
+                </div>
+
                 <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6" ref={scrollRef}>
                     {messages.map((msg) => (
                         <div key={msg.id} className={`flex flex-col ${msg.sender === 'player' ? 'items-end' : 'items-start'}`}>
@@ -351,7 +543,35 @@ const GameInterface: React.FC<Props> = ({ party, userEmail, lobbyId, initialMess
                                     }
                         `}
                             >
-                                {msg.sender === 'dm' && <span className="block text-xs text-dnd-gold font-bold mb-1 font-fantasy">Dungeon Master</span>}
+                                {msg.sender === 'dm' && (
+                                    <div className="flex items-center justify-between mb-1 border-b border-red-900/30 pb-1">
+                                        <span className="text-xs text-dnd-gold font-bold font-fantasy">Dungeon Master</span>
+                                        <button
+                                            onClick={() => handlePlayAudio(msg.id, msg.text)}
+                                            disabled={msg.metadata?.audioGenerating && playingAudioId !== msg.id}
+                                            className={`
+                                                p-1 rounded-full transition 
+                                                ${playingAudioId === msg.id || msg.metadata?.audioGenerating
+                                                    ? 'text-red-400 cursor-wait'
+                                                    : 'text-gray-500 hover:text-dnd-gold hover:bg-red-900/40'}
+                                                ${msg.metadata?.audioGenerating && playingAudioId !== msg.id ? 'opacity-50' : ''}
+                                            `}
+                                            title={playingAudioId === msg.id ? "Detener" : msg.metadata?.audioGenerating ? "Generando audio..." : "Escuchar Narración"}
+                                        >
+                                            {playingAudioId === msg.id || msg.metadata?.audioGenerating ? (
+                                                <div className="relative">
+                                                    {playingAudioId === msg.id && !audioRef.current?.paused ? (
+                                                        <StopCircle size={16} /> // Playing -> Stop
+                                                    ) : (
+                                                        <Loader2 size={16} className="animate-spin" /> // Generating or Loading
+                                                    )}
+                                                </div>
+                                            ) : (
+                                                <Volume2 size={14} />
+                                            )}
+                                        </button>
+                                    </div>
+                                )}
 
                                 <div className="whitespace-pre-wrap">{renderMarkdown(msg.text)}</div>
                             </div>
@@ -377,43 +597,69 @@ const GameInterface: React.FC<Props> = ({ party, userEmail, lobbyId, initialMess
                     )}
                 </div>
 
-                {/* Input Area */}
-                <div className="p-4 bg-slate-900 border-t border-gray-800">
-                    {suggestedActions.length > 0 && !isLoading && !myCharacter?.isReady && (
-                        <div className="flex gap-2 overflow-x-auto pb-3 mb-2 scrollbar-thin">
-                            {suggestedActions.map((action, idx) => (
-                                <button
-                                    key={idx}
-                                    onClick={() => setInput(action)}
-                                    className="whitespace-nowrap px-3 py-1 bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded-full text-xs text-dnd-gold transition"
-                                >
-                                    {action}
-                                </button>
-                            ))}
-                        </div>
-                    )}
+                {/* Bottom Area: Dice (Left) + Input Group (Right) */}
+                <div className="p-4 bg-slate-950 border-t border-gray-800 flex gap-4 h-48 md:h-40">
 
-                    <div className="flex gap-2">
-                        <input
-                            type="text"
-                            value={input}
-                            onChange={(e) => setInput(e.target.value)}
-                            onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-                            placeholder={!myCharacter ? "Modo Espectador" : myCharacter.isReady ? "Acción enviada..." : "¿Qué quieres hacer?"}
-                            className="flex-1 bg-slate-800 border border-gray-600 rounded-lg px-4 py-3 text-white focus:border-dnd-gold focus:outline-none placeholder-gray-500 shadow-inner disabled:opacity-50"
-                            disabled={isLoading || !canAct}
-                        />
-                        <button
-                            onClick={() => handleSend()}
-                            disabled={isLoading || !input.trim() || !canAct}
-                            className="bg-dnd-gold text-dnd-dark px-6 py-2 rounded-lg font-bold hover:bg-yellow-500 disabled:opacity-50 disabled:cursor-not-allowed transition flex items-center gap-2"
-                        >
-                            <Send size={18} />
-                            <span className="hidden md:inline">{myCharacter?.isReady ? 'Listo' : 'Actuar'}</span>
-                        </button>
+                    {/* LEFT: Dice Roller (Red Zone) */}
+                    <div className="w-1/4 min-w-[120px] max-w-[200px]">
+                        {canAct ? (
+                            <DiceRoller onRoll={handleRoll} />
+                        ) : (
+                            <div className="h-full border border-ray-700/50 rounded-lg flex items-center justify-center text-gray-500 text-xs text-center p-2 bg-slate-900/50">
+                                <span>No puedes lanzar ahora</span>
+                            </div>
+                        )}
                     </div>
 
-                    {canAct && <DiceRoller onRoll={handleRoll} />}
+                    {/* RIGHT: Input Group (Green + Grey + Yellow) */}
+                    <div className="flex-1 flex flex-col gap-2">
+
+                        {/* TOP: Suggestions (Green Zone) */}
+                        <div className="h-8 flex items-center">
+                            {suggestedActions.length > 0 && !isLoading && !myCharacter?.isReady ? (
+                                <div className="flex gap-2 overflow-x-auto scrollbar-thin w-full items-center">
+                                    <span className="text-[10px] text-green-500 font-bold uppercase tracking-wider mr-2 shrink-0">Sugerencias:</span>
+                                    {suggestedActions.map((action, idx) => (
+                                        <button
+                                            key={idx}
+                                            onClick={() => setInput(action)}
+                                            className="whitespace-nowrap px-3 py-1 bg-green-900/20 hover:bg-green-900/40 border border-green-800 hover:border-green-500 rounded text-xs text-green-400 transition"
+                                        >
+                                            {action}
+                                        </button>
+                                    ))}
+                                </div>
+                            ) : (
+                                <span className="text-[10px] text-gray-600 italic">Escribe tu acción o espera sugerencias...</span>
+                            )}
+                        </div>
+
+                        {/* BOTTOM: Input (Grey) + Button (Yellow) */}
+                        <div className="flex-1 flex gap-2">
+                            <textarea
+                                value={input}
+                                onChange={(e) => setInput(e.target.value)}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter' && !e.shiftKey) {
+                                        e.preventDefault();
+                                        handleSend();
+                                    }
+                                }}
+                                placeholder={!myCharacter ? "Modo Espectador" : myCharacter.isReady ? "Accion enviada esperanda resolucion..." : "¿Qué quieres hacer?"}
+                                className="flex-1 bg-gray-800 border border-gray-700 rounded-lg p-3 text-white focus:border-dnd-gold focus:outline-none placeholder-gray-500 shadow-inner resize-none text-sm"
+                                disabled={isLoading || !canAct}
+                            />
+
+                            <button
+                                onClick={() => handleSend()}
+                                disabled={isLoading || !input.trim() || !canAct}
+                                className="w-24 bg-dnd-gold hover:bg-yellow-400 text-dnd-dark font-bold rounded-lg shadow-lg flex flex-col items-center justify-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                            >
+                                <Send size={20} />
+                                <span className="text-xs uppercase tracking-wider font-extrabold">Actuar</span>
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>

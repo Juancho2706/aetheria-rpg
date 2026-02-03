@@ -1,9 +1,11 @@
 'use client'
 
 import React, { useState } from 'react';
-import { Character, ClassType, Stats, StatName, CLASS_DESCRIPTIONS } from '../types';
-import { Minus, Plus, RefreshCw, Dices, Upload, Shield, Heart } from 'lucide-react';
-// Removed generateImageAction import as AI feature is disabled
+import { Character, ClassType, Stats, StatName, CLASS_DESCRIPTIONS, CLASS_NAMES, CLASS_PRESETS } from '../types';
+import { CLASS_STARTER_GEAR } from '../lib/gameData';
+import { Minus, Plus, RefreshCw, Dices, Upload, Shield, Heart, HelpCircle, Sparkles, Loader2, Volume2 } from 'lucide-react';
+import { generateCharacterDetailsAction } from '../app/actions';
+
 
 interface Props {
     ownerEmail: string;
@@ -19,14 +21,81 @@ const SCORE_COSTS: Record<number, number> = {
     8: 0, 9: 1, 10: 2, 11: 3, 12: 4, 13: 5, 14: 7, 15: 9
 };
 
+const RECOMMENDED_STATS: Record<ClassType, StatName[]> = {
+    Fighter: ['STR', 'CON'],
+    Wizard: ['INT', 'CON'],
+    Rogue: ['DEX', 'CHA'],
+    Cleric: ['WIS', 'CON'],
+    Paladin: ['STR', 'CHA'],
+    Ranger: ['DEX', 'WIS']
+};
+
+const VOICE_OPTIONS = {
+    male: [
+        { id: 'Puck', name: 'Puck (Travieso)' },
+        { id: 'Charon', name: 'Charon (Profundo)' },
+        { id: 'Fenrir', name: 'Fenrir (Intenso)' }
+    ],
+    female: [
+        { id: 'Aoede', name: 'Aoede (Elegante)' },
+        { id: 'Kore', name: 'Kore (Calma)' }
+    ]
+};
+
+
 const CharacterCreator: React.FC<Props> = ({ ownerEmail, onComplete, onCancel }) => {
     const [name, setName] = useState('');
     const [classType, setClassType] = useState<ClassType>('Fighter');
-    const [stats, setStats] = useState<Stats>({
-        STR: 8, DEX: 8, CON: 8, INT: 8, WIS: 8, CHA: 8
-    });
+    // Initialize with Fighter preset
+    const [stats, setStats] = useState<Stats>(CLASS_PRESETS['Fighter']);
     const [bio, setBio] = useState('');
+    const [personality, setPersonality] = useState('');
     const [avatarUrl, setAvatarUrl] = useState<string | undefined>(undefined);
+    const [voiceId, setVoiceId] = useState('Puck'); // Default
+    const [isGenerating, setIsGenerating] = useState(false);
+    const [voiceSamples, setVoiceSamples] = useState<Record<string, string>>({});
+    const [previewPlaying, setPreviewPlaying] = useState<string | null>(null);
+
+    // Load samples on mount
+    React.useEffect(() => {
+        const loadSamples = async () => {
+            console.log("🎤 CharacterCreator mounted. Requesting voice samples...");
+            await new Promise(r => setTimeout(r, 1000));
+
+            try {
+                const samples = await import('../app/actions').then(mod => mod.ensureVoiceSamplesAction());
+                console.log("🎤 Voice Samples Result:", samples);
+                setVoiceSamples(samples);
+            } catch (e) {
+                console.error("Failed to load voice samples", e);
+            }
+        };
+        loadSamples();
+    }, []);
+
+    const handlePlayPreview = async (vId: string) => {
+        if (previewPlaying) return;
+        setPreviewPlaying(vId);
+
+        try {
+            const url = voiceSamples[vId];
+            if (url) {
+                const audio = new Audio(url);
+                audio.onended = () => setPreviewPlaying(null);
+                audio.onerror = () => setPreviewPlaying(null);
+                await audio.play();
+            } else {
+                // Fallback if not ready yet
+                const u = new SpeechSynthesisUtterance(`Soy ${vId}.`);
+                u.onend = () => setPreviewPlaying(null);
+                window.speechSynthesis.speak(u);
+            }
+        } catch (e) {
+            console.error(e);
+            setPreviewPlaying(null);
+        }
+    };
+
 
     const calculateModifier = (val: number) => Math.floor((val - 10) / 2);
 
@@ -81,6 +150,15 @@ const CharacterCreator: React.FC<Props> = ({ ownerEmail, onComplete, onCancel })
         setStats(currentStats);
     };
 
+
+    const handleGenerateAI = async () => {
+        setIsGenerating(true);
+        const details = await generateCharacterDetailsAction(classType, name);
+        setBio(details.bio);
+        setPersonality(details.personality);
+        setIsGenerating(false);
+    };
+
     const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
@@ -104,6 +182,8 @@ const CharacterCreator: React.FC<Props> = ({ ownerEmail, onComplete, onCancel })
         const conMod = calculateModifier(stats.CON);
         const maxHp = Math.max(1, hitDie + conMod); // Ensure at least 1 HP
 
+        const starterKit = CLASS_STARTER_GEAR[classType] || {};
+
         const newChar: Character = {
             id: Date.now().toString(),
             name: name || 'Unknown Hero',
@@ -114,18 +194,61 @@ const CharacterCreator: React.FC<Props> = ({ ownerEmail, onComplete, onCancel })
             maxHp,
             stats,
             bio,
+            personality,
             avatarUrl,
-            inventory: [],
+            voiceId,
+            inventory: starterKit.inventory || [],
+            equipment: {
+                head: undefined,
+                chest: starterKit.chest || undefined,
+                mainHand: starterKit.mainHand || undefined,
+                offHand: starterKit.offHand || undefined,
+                legs: undefined,
+                feet: undefined,
+                amulet: undefined,
+                ring1: undefined,
+                ring2: undefined
+            },
             isReady: false // Initial state
         };
         onComplete(newChar);
     };
 
+    const handleClassChange = (newClass: ClassType) => {
+        setClassType(newClass);
+        setStats(CLASS_PRESETS[newClass]);
+    };
+
     return (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
-            <div className="bg-dnd-panel border-2 border-dnd-gold rounded-lg w-full max-w-3xl max-h-[90vh] overflow-y-auto shadow-2xl flex flex-col">
+            <div className="bg-dnd-panel border-2 border-dnd-gold rounded-lg w-full max-w-3xl max-h-[90vh] overflow-y-auto shadow-2xl flex flex-col relative">
+
+                {/* Help Tooltip - Moved to Top Right of Modal */}
+                <div className="absolute top-4 right-6 group z-50">
+                    <HelpCircle size={24} className="text-gray-500 hover:text-dnd-gold cursor-help" />
+                    <div className="absolute right-0 top-8 w-72 bg-slate-950 border border-dnd-gold/30 p-4 rounded shadow-xl text-xs text-gray-300 hidden group-hover:block pointer-events-none">
+                        <strong className="text-dnd-gold block mb-2 text-sm border-b border-gray-800 pb-1">Reglas de Creación</strong>
+                        <ul className="list-disc list-inside space-y-1">
+                            <li><strong>Clase y Rol:</strong> Define tus habilidades y tu equipo.</li>
+                            <li><strong>Atributos (Point Buy):</strong> Tienes 27 puntos. Empiezas con una distribución base sugerida para tu clase, pero puedes modificarla.
+                                <ul className="pl-4 text-gray-400 mt-1">
+                                    <li>8-13: 1 punto</li>
+                                    <li>13-15: 2 puntos</li>
+                                </ul>
+                            </li>
+                            <li><strong>Personalidad:</strong> Usa la IA para generar una identidad única o escríbela tú mismo.</li>
+                            <li className="pt-2 border-t border-gray-800 mt-2"><strong>Estadísticas Derivadas:</strong>
+                                <ul className="pl-4 text-gray-400 mt-1">
+                                    <li><span className="text-red-400">♥ HP (Vida):</span> Resistencia al daño. [Clase + Con]</li>
+                                    <li><span className="text-blue-400">🛡️ AC (Defensa):</span> Dificultad para ser golpeado. [10 + Dex]</li>
+                                </ul>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+
                 <div className="p-6 flex-1 overflow-y-auto">
-                    <h2 className="text-3xl font-fantasy text-dnd-gold mb-6 text-center border-b border-gray-700 pb-4">Create Your Hero</h2>
+                    <h2 className="text-3xl font-fantasy text-dnd-gold mb-6 text-center border-b border-gray-700 pb-4">Crear Héroe</h2>
 
                     <form onSubmit={handleSubmit} className="space-y-8">
                         <div className="flex flex-col md:flex-row gap-6">
@@ -141,7 +264,7 @@ const CharacterCreator: React.FC<Props> = ({ ownerEmail, onComplete, onCancel })
 
                                 <label className="flex items-center gap-2 px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded cursor-pointer transition text-sm border border-gray-600">
                                     <Upload size={16} />
-                                    <span>Upload Portrait</span>
+                                    <span>Subir Retrato</span>
                                     <input
                                         type="file"
                                         accept="image/*"
@@ -155,7 +278,7 @@ const CharacterCreator: React.FC<Props> = ({ ownerEmail, onComplete, onCancel })
                             {/* Basic Info */}
                             <div className="flex-1 grid grid-cols-1 gap-6">
                                 <div>
-                                    <label className="block text-gray-400 mb-2 font-bold uppercase text-xs tracking-wider">Character Name</label>
+                                    <label className="block text-gray-400 mb-2 font-bold uppercase text-xs tracking-wider">Nombre</label>
                                     <input
                                         type="text"
                                         value={name}
@@ -166,14 +289,14 @@ const CharacterCreator: React.FC<Props> = ({ ownerEmail, onComplete, onCancel })
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-gray-400 mb-2 font-bold uppercase text-xs tracking-wider">Class</label>
+                                    <label className="block text-gray-400 mb-2 font-bold uppercase text-xs tracking-wider">Clase</label>
                                     <select
                                         value={classType}
-                                        onChange={(e) => setClassType(e.target.value as ClassType)}
+                                        onChange={(e) => handleClassChange(e.target.value as ClassType)}
                                         className="w-full bg-slate-800 border border-gray-600 rounded p-3 text-white focus:border-dnd-gold outline-none"
                                     >
-                                        {Object.keys(CLASS_DESCRIPTIONS).map(c => (
-                                            <option key={c} value={c}>{c}</option>
+                                        {(Object.keys(CLASS_NAMES) as ClassType[]).map(c => (
+                                            <option key={c} value={c}>{CLASS_NAMES[c]}</option>
                                         ))}
                                     </select>
                                 </div>
@@ -185,15 +308,16 @@ const CharacterCreator: React.FC<Props> = ({ ownerEmail, onComplete, onCancel })
                         </div>
 
                         {/* Point Buy Stats */}
-                        <div className="bg-slate-900/50 p-6 rounded-lg border border-gray-700">
+                        <div className="bg-slate-900/50 p-6 rounded-lg border border-gray-700 relative">
+
                             <div className="flex justify-between items-center mb-6">
                                 <div>
-                                    <label className="text-dnd-gold font-fantasy text-xl">Ability Scores</label>
-                                    <p className="text-xs text-gray-400">Point Buy System (Min 8, Max 15)</p>
+                                    <label className="text-dnd-gold font-fantasy text-xl">Atributos</label>
+                                    <p className="text-xs text-gray-400">Puntos Restantes (Min 8, Max 15)</p>
                                 </div>
 
                                 <div className="flex flex-col items-end">
-                                    <div className="text-sm font-bold text-gray-300 mb-1">Points Remaining</div>
+                                    <div className="text-sm font-bold text-gray-300 mb-1">Puntos Disponibles</div>
                                     <div className="flex items-center gap-3">
                                         <div className="w-32 h-3 bg-gray-700 rounded-full overflow-hidden">
                                             <div
@@ -232,9 +356,12 @@ const CharacterCreator: React.FC<Props> = ({ ownerEmail, onComplete, onCancel })
                                     const canIncrease = val < MAX_SCORE && remainingPoints >= nextCost;
                                     const canDecrease = val > MIN_SCORE;
 
+                                    const isRecommended = RECOMMENDED_STATS[classType].includes(stat);
+
                                     return (
-                                        <div key={stat} className="flex flex-col items-center bg-slate-800 p-3 rounded border border-gray-700 relative group hover:border-gray-500 transition">
-                                            <div className="font-bold text-gray-400 mb-2">{stat}</div>
+                                        <div key={stat} className={`flex flex-col items-center bg-slate-800 p-3 rounded border relative group transition ${isRecommended ? 'border-dnd-gold/60 shadow-[0_0_10px_rgba(212,175,55,0.1)]' : 'border-gray-700 hover:border-gray-500'}`}>
+                                            {isRecommended && <div className="absolute -top-2 text-[9px] bg-dnd-gold text-dnd-dark px-1.5 rounded font-bold uppercase">Clave</div>}
+                                            <div className={`font-bold mb-2 ${isRecommended ? 'text-dnd-gold' : 'text-gray-400'}`}>{stat}</div>
 
                                             <div className="flex items-center gap-2 mb-2 w-full justify-between px-1">
                                                 <button
@@ -267,15 +394,95 @@ const CharacterCreator: React.FC<Props> = ({ ownerEmail, onComplete, onCancel })
                             </div>
                         </div>
 
-                        {/* Bio */}
-                        <div>
-                            <label className="block text-gray-400 mb-2 font-bold uppercase text-xs tracking-wider">Backstory & Appearance</label>
-                            <textarea
-                                value={bio}
-                                onChange={(e) => setBio(e.target.value)}
-                                className="w-full bg-slate-800 border border-gray-600 rounded p-3 text-white h-24 focus:border-dnd-gold outline-none resize-none"
-                                placeholder="Describe your character's appearance and history (used for avatar generation)..."
-                            />
+
+                        {/* Voice Selection */}
+                        <div className="bg-slate-900/50 p-6 rounded-lg border border-gray-700">
+                            <h3 className="text-xl font-fantasy text-dnd-gold mb-4">Voz del Personaje</h3>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div>
+                                    <h4 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-3">Voces Masculinas</h4>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        {VOICE_OPTIONS.male.map((v) => (
+                                            <button
+                                                key={v.id}
+                                                type="button"
+                                                onClick={() => setVoiceId(v.id)}
+                                                className={`
+                                                    p-3 rounded border text-left flex justify-between items-center group
+                                                    ${voiceId === v.id ? 'bg-dnd-gold/20 border-dnd-gold text-white' : 'bg-slate-800 border-gray-600 text-gray-400 hover:border-gray-400'}
+                                                `}
+                                            >
+                                                <span className="font-semibold text-sm">{v.name}</span>
+                                                <div
+                                                    onClick={(e) => { e.stopPropagation(); handlePlayPreview(v.id); }}
+                                                    className="p-1.5 rounded-full hover:bg-white/10 text-dnd-gold"
+                                                    title="Escuchar prueba"
+                                                >
+                                                    {previewPlaying === v.id ? <Loader2 size={14} className="animate-spin" /> : <Volume2 size={14} />}
+                                                </div>
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                                <div>
+                                    <h4 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-3">Voces Femeninas</h4>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        {VOICE_OPTIONS.female.map((v) => (
+                                            <button
+                                                key={v.id}
+                                                type="button"
+                                                onClick={() => setVoiceId(v.id)}
+                                                className={`
+                                                    p-3 rounded border text-left flex justify-between items-center group
+                                                    ${voiceId === v.id ? 'bg-dnd-gold/20 border-dnd-gold text-white' : 'bg-slate-800 border-gray-600 text-gray-400 hover:border-gray-400'}
+                                                `}
+                                            >
+                                                <span className="font-semibold text-sm">{v.name}</span>
+                                                <div
+                                                    onClick={(e) => { e.stopPropagation(); handlePlayPreview(v.id); }}
+                                                    className="p-1.5 rounded-full hover:bg-white/10 text-dnd-gold"
+                                                    title="Escuchar prueba"
+                                                >
+                                                    {previewPlaying === v.id ? <Loader2 size={14} className="animate-spin" /> : <Volume2 size={14} />}
+                                                </div>
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Bio & Personality */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div className="relative">
+                                <label className="block text-gray-400 mb-2 font-bold uppercase text-xs tracking-wider flex justify-between">
+                                    Personalidad
+                                    <button
+                                        type="button"
+                                        onClick={handleGenerateAI}
+                                        disabled={isGenerating}
+                                        className="text-dnd-gold flex items-center gap-1 hover:text-yellow-400 transition"
+                                        title="Generar con IA"
+                                    >
+                                        <Sparkles size={12} /> {isGenerating ? 'Pensando...' : 'Aleatorio'}
+                                    </button>
+                                </label>
+                                <textarea
+                                    value={personality}
+                                    onChange={(e) => setPersonality(e.target.value)}
+                                    className="w-full bg-slate-800 border border-gray-600 rounded p-3 text-white h-24 focus:border-dnd-gold outline-none resize-none text-sm"
+                                    placeholder="¿Cómo se comporta tu personaje? (Ej: Valiente, astuto, honorable...)"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-gray-400 mb-2 font-bold uppercase text-xs tracking-wider">Historia (Backstory)</label>
+                                <textarea
+                                    value={bio}
+                                    onChange={(e) => setBio(e.target.value)}
+                                    className="w-full bg-slate-800 border border-gray-600 rounded p-3 text-white h-24 focus:border-dnd-gold outline-none resize-none text-sm"
+                                    placeholder="Breve historia de su pasado..."
+                                />
+                            </div>
                         </div>
 
                         {/* Actions */}
@@ -290,14 +497,15 @@ const CharacterCreator: React.FC<Props> = ({ ownerEmail, onComplete, onCancel })
                                     onClick={onCancel}
                                     className="px-6 py-2 text-gray-400 hover:text-white transition"
                                 >
-                                    Cancel
+                                    Cancelar
                                 </button>
                                 <button
                                     type="submit"
-                                    className="px-8 py-2 bg-dnd-gold text-dnd-dark font-bold rounded hover:bg-yellow-500 transition shadow-lg shadow-yellow-900/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                                    className="px-8 py-2 bg-dnd-gold text-dnd-dark font-bold rounded hover:bg-yellow-500 transition shadow-lg shadow-yellow-900/20 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                                     disabled={remainingPoints < 0}
                                 >
-                                    Summon Hero
+                                    {isGenerating ? <Loader2 className="animate-spin" size={16} /> : null}
+                                    Invocar Héroe
                                 </button>
                             </div>
                         </div>
