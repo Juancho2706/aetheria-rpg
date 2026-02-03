@@ -67,6 +67,8 @@ const DM_SYSTEM_INSTRUCTION = `
 You are the Dungeon Master (DM) for a Dungeons & Dragons 5th Edition game. 
 Your goal is to provide an immersive, text-based RPG experience.
 
+IMPORTANT: YOU MUST RESPOND ONLY IN SPANISH.
+
 RULES:
 1. Act as the narrator and referee. Describe the environment, NPCs, and outcomes of actions.
 2. Be descriptive but concise. Avoid wall-of-text.
@@ -76,15 +78,15 @@ RULES:
 6. **Multiplayer Turn Resolution**: You will receive a list of actions from multiple characters. Resolve them simultaneously or in logical initiative order, then describe the collective outcome.
 
 CRITICAL OUTPUT FORMAT:
-Your response must be natural text for the story. 
+Your response must be natural text for the story in SPANISH.
 However, at the very end of your response, you MUST include a JSON block wrapped in \`\`\`json\`\`\` to update the game interface state.
 The JSON block should match this schema:
 {
   "hpUpdates": { "CharacterName": number }, // The NEW total HP value, not the change.
   "inventoryUpdates": { "CharacterName": ["item1", "item2"] }, // The NEW, complete list of items for the character.
-  "location": "Current location name",
+  "location": "Current location name (in Spanish)",
   "inCombat": boolean,
-  "suggestedActions": ["Action 1", "Action 2", "Action 3"] // 3 short options for quick play
+  "suggestedActions": ["Action 1", "Action 2", "Action 3"] // 3 short options for quick play in Spanish
 }
 `;
 
@@ -133,15 +135,16 @@ export async function initializeCampaignAction(party: Character[]): Promise<Mess
     const ai = getAI();
 
     const partyDescription = party.map(c =>
-        `${c.name} (Level ${c.level} ${c.classType}) - HP: ${c.hp}/${c.maxHp}. Stats: STR${c.stats.STR} DEX${c.stats.DEX} INT${c.stats.INT}. Bio: ${c.bio}. Inventory: ${c.inventory.join(', ')}`
+        `${c.name} (Nivel ${c.level} ${c.classType}) - PV: ${c.hp}/${c.maxHp}. Est: FUE${c.stats.STR} DES${c.stats.DEX} INT${c.stats.INT}. Bio: ${c.bio}. Inventario: ${c.inventory.join(', ')}`
     ).join('\n');
 
     const prompt = `
-    Start a new adventure for this party:
+    Comienza una nueva aventura para este grupo:
     ${partyDescription}
     
-    Create an interesting scenario (e.g., a tavern meeting, a waking up in a dungeon, a king's summons).
-    Set the scene and ask what they want to do.
+    Crea un escenario interesante (por ejemplo, una reunión en una taberna, despertar en una mazmorra, una convocatoria del rey).
+    Establece la escena y pregúntales qué quieren hacer.
+    Recuerda responder en ESPAÑOL.
     `;
 
     try {
@@ -164,7 +167,7 @@ export async function initializeCampaignAction(party: Character[]): Promise<Mess
         return {
             id: Date.now().toString(),
             sender: 'system',
-            text: `The Dungeon Master is having trouble connecting to the astral plane (API Error): ${error.message}`,
+            text: `El Dungeon Master tiene problemas para conectar con el plano astral (Error API): ${error.message}`,
             timestamp: Date.now()
         };
     }
@@ -177,14 +180,15 @@ export async function resolveTurnAction(
     const ai = getAI();
 
     const actionDescriptions = actions.map(a =>
-        `- ${a.characterName}: ${a.action} ${a.roll ? `(Rolled: ${a.roll})` : ''}`
+        `- ${a.characterName}: ${a.action} ${a.roll ? `(Resultado Dado: ${a.roll})` : ''}`
     ).join('\n');
 
     const prompt = `
-    The players have made their decisions for this turn:
+    Los jugadores han tomado sus decisiones para este turno:
     ${actionDescriptions}
     
-    Resolve these actions based on the current context and describe what happens next.
+    Resuelve estas acciones basándote en el contexto actual y describe qué sucede a continuación.
+    Recuerda responder en ESPAÑOL.
     `;
 
     const chatHistory = mapHistoryToContent(history);
@@ -213,7 +217,7 @@ export async function resolveTurnAction(
         return {
             id: Date.now().toString(),
             sender: 'system',
-            text: "The Dungeon Master is silent (API Error).",
+            text: "El Dungeon Master está en silencio (Error API).",
             timestamp: Date.now()
         };
     }

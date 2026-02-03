@@ -28,14 +28,14 @@ const LandingPage: React.FC<Props> = ({ onLogin, onEnter, onLogout, isLoading, o
             {isLoggedIn && (
                 <div className="absolute top-0 right-0 z-50 p-6 flex items-center gap-4">
                     <div className="text-right hidden md:block">
-                        <p className="text-[10px] uppercase font-bold text-gray-400">Logged in as</p>
+                        <p className="text-[10px] uppercase font-bold text-gray-400">Conectado como</p>
                         <p className="text-dnd-gold text-sm font-fantasy">{userEmail}</p>
                     </div>
                     <button
                         onClick={onLogout}
                         className="px-4 py-2 bg-slate-900/50 hover:bg-red-900/50 border border-gray-700 hover:border-red-500 rounded text-xs transition uppercase font-bold"
                     >
-                        Logout
+                        Salir
                     </button>
                 </div>
             )}
@@ -60,7 +60,7 @@ const LandingPage: React.FC<Props> = ({ onLogin, onEnter, onLogout, isLoading, o
                         AETHERIA
                     </motion.h1>
                     <p className="text-xl md:text-2xl text-gray-300 font-light tracking-wide max-w-2xl mx-auto leading-relaxed">
-                        Where your imagination meets the infinite. The first <span className="text-dnd-gold font-bold">AI-Powered</span> Dungeon Master experience.
+                        Donde tu imaginación encuentra lo infinito. La primera experiencia de Dungeon Master <span className="text-dnd-gold font-bold">Impulsada por IA</span>.
                     </p>
                 </motion.div>
 
@@ -78,10 +78,10 @@ const LandingPage: React.FC<Props> = ({ onLogin, onEnter, onLogout, isLoading, o
                         <span className="absolute inset-0 w-full h-full bg-dnd-gold transform -translate-x-full group-hover:translate-x-0 transition-transform duration-300 ease-out"></span>
                         <span className="relative flex items-center gap-3">
                             {isLoading ? <Loader2 className="animate-spin" /> : <Crown size={24} />}
-                            {isLoading ? 'Summoning Gate...' : (isLoggedIn ? 'Continue Adventure' : 'Enter the Realm')}
+                            {isLoading ? 'Abriendo el Portal...' : (isLoggedIn ? 'Continuar Aventura' : 'Entrar al Reino')}
                         </span>
                     </button>
-                    {!isLoggedIn && <p className="text-xs text-gray-500 mt-4 opacity-70">Requires Google Authentication</p>}
+                    {!isLoggedIn && <p className="text-xs text-gray-500 mt-4 opacity-70">Requiere Autenticación de Google</p>}
                 </motion.div>
 
                 {/* Feature Grid */}
@@ -93,25 +93,25 @@ const LandingPage: React.FC<Props> = ({ onLogin, onEnter, onLogout, isLoading, o
                 >
                     <FeatureCard
                         icon={<Zap className="text-yellow-400" size={32} />}
-                        title="Gemini 2.5 DM"
-                        description="Experience a narrator that remembers your backstory, invents epic plots, and manages the rules seamlessly."
+                        title="DM Gemini 2.5"
+                        description="Experimenta un narrador que recuerda tu historia, inventa tramas épicas y gestiona las reglas sin problemas."
                     />
                     <FeatureCard
                         icon={<BookOpen className="text-blue-400" size={32} />}
-                        title="Infinite Stories"
-                        description="No two adventures are alike. From deep dungeons to floating cities, the world generates as you explore."
+                        title="Historias Infinitas"
+                        description="Nunca hay dos aventuras iguales. Desde mazmorras profundas hasta ciudades flotantes, el mundo se genera mientras exploras."
                     />
                     <FeatureCard
                         icon={<Shield className="text-red-400" size={32} />}
-                        title="D&D 5e Rules"
-                        description="Built-in mechanics for ability checks, combat, and inventory management. Roll the dice and let fate decide."
+                        title="Reglas D&D 5e"
+                        description="Mecánicas integradas para pruebas de habilidad, combate y gestión de inventario. Tira los dados y deja que el destino decida."
                     />
                 </motion.div>
 
                 {/* Footer Config Info */}
                 <div className="absolute bottom-4 left-4 text-left opacity-30 hover:opacity-100 transition-opacity">
                     <div className="text-[10px] text-gray-500">
-                        <p>Origin: {origin}</p>
+                        <p>Origen: {origin}</p>
                         <p>Build: Next.js 15 / Gemini 2.5</p>
                     </div>
                 </div>

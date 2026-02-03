@@ -17,62 +17,30 @@ interface Props {
 }
 
 // Simple Markdown to JSX converter for bold and italic
+// Simple Markdown to JSX converter for bold and italic
 const renderMarkdown = (text: string) => {
-    let renderedText: React.ReactNode[] = [];
-    let currentText = text;
+    // Split by bold first
+    const boldParts = text.split(/\*\*(.*?)\*\*/g);
 
-    const processMatch = (regex: RegExp, tag: string, contentProcessor: (s: string) => React.ReactNode) => {
-        let match;
-        let lastIndex = 0;
-        const parts: React.ReactNode[] = [];
-
-        while ((match = regex.exec(currentText)) !== null) {
-            if (match.index > lastIndex) {
-                parts.push(currentText.substring(lastIndex, match.index));
-            }
-            parts.push(React.createElement(tag, { key: `${tag}-${match.index}` }, contentProcessor(match[1])));
-            lastIndex = match.index + match[0].length;
-        }
-        if (lastIndex < currentText.length) {
-            parts.push(currentText.substring(lastIndex));
-        }
-        return parts;
-    };
-
-    // First bold, then italic
-    let tempRendered = processMatch(/\*\*(.*?)\*\*/g, 'strong', (content) => content);
-    currentText = tempRendered.map(node => typeof node === 'string' ? node : null).join('');
-    renderedText = tempRendered.map((node, i) => typeof node === 'string' ? processMatch(/\*(.*?)\*/g, 'em', (content) => content).filter(n => typeof n === 'string' ? n.includes(node as string) : true).map(n => n) : node);
-
-    renderedText = renderedText.flat();
-    renderedText = renderedText.map(node => typeof node === 'string' ? processMatch(/\*(.*?)\*/g, 'em', (content) => content) : node).flat();
-
-    const finalOutput: React.ReactNode[] = [];
-    let currentString = '';
-
-    for (const part of renderedText) {
-        if (typeof part === 'string') {
-            currentString += part;
+    return boldParts.map((part, index) => {
+        // Even indices are normal text (or containing italics), odd are bold
+        if (index % 2 === 1) {
+            return <strong key={`bold-${index}`}>{part}</strong>;
         } else {
-            if (currentString) {
-                finalOutput.push(currentString);
-                currentString = '';
-            }
-            finalOutput.push(part);
+            // Process italics within non-bold parts
+            const italicParts = part.split(/\*(.*?)\*/g);
+            return (
+                <span key={`text-${index}`}>
+                    {italicParts.map((subPart, subIndex) => {
+                        if (subIndex % 2 === 1) {
+                            return <em key={`em-${index}-${subIndex}`}>{subPart}</em>;
+                        }
+                        return subPart;
+                    })}
+                </span>
+            );
         }
-    }
-    if (currentString) {
-        finalOutput.push(currentString);
-    }
-
-    const italicProcessed = finalOutput.map(part => {
-        if (typeof part === 'string') {
-            return processMatch(/\*(.*?)\*/g, 'em', (content) => content);
-        }
-        return part;
-    }).flat();
-
-    return <>{italicProcessed}</>;
+    });
 };
 
 const GameInterface: React.FC<Props> = ({ party, userEmail, lobbyId, initialMessages = [], onLeaveLobby }) => {
@@ -80,7 +48,7 @@ const GameInterface: React.FC<Props> = ({ party, userEmail, lobbyId, initialMess
     const [characters, setCharacters] = useState<Character[]>(party);
     const [input, setInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
-    const [location, setLocation] = useState('Unknown');
+    const [location, setLocation] = useState('Desconocido');
     const [suggestedActions, setSuggestedActions] = useState<string[]>([]);
     const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -227,6 +195,17 @@ const GameInterface: React.FC<Props> = ({ party, userEmail, lobbyId, initialMess
 
         const fullAction = rollResult ? `${actionText} [Dice: ${rollResult}]` : actionText;
 
+        // Show player action immediately in chat
+        const playerMsg: Message = {
+            id: Date.now().toString(),
+            sender: 'player',
+            text: fullAction,
+            timestamp: Date.now()
+        };
+
+        const updatedMessages = [...messages, playerMsg];
+        setMessages(updatedMessages);
+
         const newParty = characters.map(c => {
             if (c.ownerEmail === userEmail) {
                 return { ...c, isReady: true, pendingAction: fullAction };
@@ -239,8 +218,8 @@ const GameInterface: React.FC<Props> = ({ party, userEmail, lobbyId, initialMess
         setInput('');
         setSuggestedActions([]);
 
-        // Save to Supabase so others see I am Ready
-        saveGame(lobbyId, newParty, messages);
+        // Save to Supabase so others see I am Ready AND see my message
+        saveGame(lobbyId, newParty, updatedMessages);
     };
 
     const resolveTurn = async () => {
@@ -249,7 +228,7 @@ const GameInterface: React.FC<Props> = ({ party, userEmail, lobbyId, initialMess
         // Collect actions
         const actions = characters.map(c => ({
             characterName: c.name,
-            action: c.pendingAction || "Does nothing hesitant."
+            action: c.pendingAction || "No hace nada, duda."
         }));
 
         // Server Action
@@ -276,7 +255,7 @@ const GameInterface: React.FC<Props> = ({ party, userEmail, lobbyId, initialMess
     };
 
     const handleRoll = (resultStr: string, total: number) => {
-        handleSend(`I roll the dice: ${resultStr}`, resultStr);
+        handleSend(`Lanzo los dados: ${resultStr}`, resultStr);
     };
 
     return (
@@ -285,7 +264,7 @@ const GameInterface: React.FC<Props> = ({ party, userEmail, lobbyId, initialMess
             {/* Sidebar */}
             <div className="w-full md:w-1/4 bg-slate-900 border-r border-gray-800 p-4 overflow-y-auto">
                 <div className="flex items-center justify-between mb-6">
-                    <h2 className="text-xl font-fantasy text-dnd-gold">The Party</h2>
+                    <h2 className="text-xl font-fantasy text-dnd-gold">El Grupo</h2>
                     <div className="flex items-center gap-2">
                         <button
                             onClick={onLeaveLobby}
@@ -309,9 +288,9 @@ const GameInterface: React.FC<Props> = ({ party, userEmail, lobbyId, initialMess
                                     <h3 className="font-bold text-white text-sm">{char.name}</h3>
                                     <div className="flex items-center gap-1">
                                         {char.isReady ? (
-                                            <span className="text-[10px] text-green-400 flex items-center gap-1 font-bold uppercase"><CheckCircle size={10} /> Ready</span>
+                                            <span className="text-[10px] text-green-400 flex items-center gap-1 font-bold uppercase"><CheckCircle size={10} /> Listo</span>
                                         ) : (
-                                            <span className="text-[10px] text-gray-400 flex items-center gap-1 font-bold uppercase"><Clock size={10} /> Thinking...</span>
+                                            <span className="text-[10px] text-gray-400 flex items-center gap-1 font-bold uppercase"><Clock size={10} /> Pensando...</span>
                                         )}
                                     </div>
                                 </div>
@@ -334,7 +313,7 @@ const GameInterface: React.FC<Props> = ({ party, userEmail, lobbyId, initialMess
                             {char.inventory.length > 0 && (
                                 <div className="pt-2 border-t border-gray-800">
                                     <div className="flex items-center gap-1 text-dnd-gold text-xs font-bold mb-1">
-                                        <ScrollText size={12} /> Inventory
+                                        <ScrollText size={12} /> Inventario
                                     </div>
                                     <ul className="text-xs text-gray-400 list-disc list-inside space-y-0.5">
                                         {char.inventory.map((item, idx) => (
@@ -350,7 +329,7 @@ const GameInterface: React.FC<Props> = ({ party, userEmail, lobbyId, initialMess
                 <div className="mt-8 border-t border-gray-800 pt-4">
                     <div className="flex items-center gap-2 text-dnd-gold mb-2">
                         <MapPin size={16} />
-                        <span className="font-fantasy text-sm">Current Location</span>
+                        <span className="font-fantasy text-sm">Ubicación Actual</span>
                     </div>
                     <p className="text-sm text-gray-400 italic">{location}</p>
                 </div>
@@ -388,10 +367,10 @@ const GameInterface: React.FC<Props> = ({ party, userEmail, lobbyId, initialMess
                                         <div className="w-2 h-2 bg-dnd-gold rounded-full animate-bounce"></div>
                                         <div className="w-2 h-2 bg-dnd-gold rounded-full animate-bounce delay-100"></div>
                                         <div className="w-2 h-2 bg-dnd-gold rounded-full animate-bounce delay-200"></div>
-                                        <span className="text-sm text-gray-400">The DM is weaving the fate...</span>
+                                        <span className="text-sm text-gray-400">El DM está tejiendo el destino...</span>
                                     </>
                                 ) : (
-                                    <span className="text-sm text-green-400 animate-pulse">Waiting for other party members...</span>
+                                    <span className="text-sm text-green-400 animate-pulse">Esperando a otros miembros del grupo...</span>
                                 )}
                             </div>
                         </div>
@@ -420,7 +399,7 @@ const GameInterface: React.FC<Props> = ({ party, userEmail, lobbyId, initialMess
                             value={input}
                             onChange={(e) => setInput(e.target.value)}
                             onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-                            placeholder={!myCharacter ? "Spectating mode" : myCharacter.isReady ? "Action committed..." : "What do you want to do?"}
+                            placeholder={!myCharacter ? "Modo Espectador" : myCharacter.isReady ? "Acción enviada..." : "¿Qué quieres hacer?"}
                             className="flex-1 bg-slate-800 border border-gray-600 rounded-lg px-4 py-3 text-white focus:border-dnd-gold focus:outline-none placeholder-gray-500 shadow-inner disabled:opacity-50"
                             disabled={isLoading || !canAct}
                         />
@@ -430,7 +409,7 @@ const GameInterface: React.FC<Props> = ({ party, userEmail, lobbyId, initialMess
                             className="bg-dnd-gold text-dnd-dark px-6 py-2 rounded-lg font-bold hover:bg-yellow-500 disabled:opacity-50 disabled:cursor-not-allowed transition flex items-center gap-2"
                         >
                             <Send size={18} />
-                            <span className="hidden md:inline">{myCharacter?.isReady ? 'Ready' : 'Act'}</span>
+                            <span className="hidden md:inline">{myCharacter?.isReady ? 'Listo' : 'Actuar'}</span>
                         </button>
                     </div>
 
