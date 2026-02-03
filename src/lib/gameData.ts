@@ -68,23 +68,34 @@ export const DEFAULT_ARMOR: Record<string, any> = {
 };
 
 export const CLASS_STARTER_GEAR: Record<string, any> = {
-    Guerrero: {
+    Fighter: {
         mainHand: DEFAULT_WEAPONS.Sword,
-        chest: DEFAULT_ARMOR.Chainmail
+        chest: DEFAULT_ARMOR.Chainmail,
+        inventory: [{ id: 'pot-health', name: 'Poción de Vida', type: 'Consumable', rarity: 'Common', icon: '🍷', description: 'Restaura salud.' }]
     },
-    Mago: {
+    Wizard: {
         mainHand: DEFAULT_WEAPONS.Staff,
         chest: DEFAULT_ARMOR.Robe,
         inventory: [{ id: 'pot-mana', name: 'Poción de Maná', type: 'Consumable', rarity: 'Common', icon: '🧪', description: 'Restaura maná.' }]
     },
-    Pícaro: {
+    Rogue: {
         mainHand: DEFAULT_WEAPONS.Dagger,
         chest: DEFAULT_ARMOR.Leather,
         inventory: [{ id: 'lockpick', name: 'Ganzúa', type: 'Tool', rarity: 'Common', icon: '🗝️', description: 'Para abrir puertas cerradas.' }]
     },
-    Clérigo: {
+    Cleric: {
         mainHand: DEFAULT_WEAPONS.Mace,
         chest: DEFAULT_ARMOR.Chainmail,
         inventory: [{ id: 'pot-health', name: 'Poción de Vida', type: 'Consumable', rarity: 'Common', icon: '🍷', description: 'Restaura salud.' }]
+    },
+    Paladin: {
+        mainHand: DEFAULT_WEAPONS.Sword,
+        chest: DEFAULT_ARMOR.Chainmail,
+        inventory: [{ id: 'holy-symbol', name: 'Símbolo Sagrado', type: 'Misc', rarity: 'Common', icon: '✝️', description: 'Foco divino.' }]
+    },
+    Ranger: {
+        mainHand: DEFAULT_WEAPONS.Dagger, // Or Bow if I defined it? Dagger for now.
+        chest: DEFAULT_ARMOR.Leather,
+        inventory: [{ id: 'rations', name: 'Raciones', type: 'Consumable', rarity: 'Common', icon: '🍖', description: 'Comida de viaje.' }]
     }
 };

@@ -80,6 +80,7 @@ const CharacterCreator: React.FC<Props> = ({ ownerEmail, onComplete, onCancel })
         try {
             const url = voiceSamples[vId];
             if (url) {
+                console.log(`▶️ Playing voice preview for ${vId}:`, url);
                 const audio = new Audio(url);
                 audio.onended = () => setPreviewPlaying(null);
                 audio.onerror = () => setPreviewPlaying(null);

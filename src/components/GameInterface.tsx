@@ -266,30 +266,99 @@ const GameInterface: React.FC<Props> = ({ party, userEmail, lobbyId, initialMess
 
         // Optimistic / Leader-driven update:
         if (characters.length > 0 && characters[0].ownerEmail === userEmail) {
-            // I am leader, I should apply updates and save them.
-            const newParty = characters.map(char => {
+
+            // Helper to fetch item
+            const fetchOrMockItem = async (name: string, fallbackIdx: number): Promise<any> => {
+                try {
+                    const { data, error } = await supabase.from('items').select('*').ilike('name', name).maybeSingle();
+                    if (data && !error) return { ...data, id: `item-${Date.now()}-${fallbackIdx}` };
+                } catch (e) { console.error(e); }
+
+                return {
+                    id: `item-${Date.now()}-${fallbackIdx}`,
+                    name: name,
+                    type: 'Misc',
+                    rarity: 'Common',
+                    description: 'Objeto sin identificar', // Default fallback
+                    icon: '📦'
+                };
+            };
+
+            const newParty = await Promise.all(characters.map(async char => {
                 let newChar = { ...char };
+
+                // HP
                 const hpKey = Object.keys(state.hpUpdates || {}).find(k => char.name.toLowerCase().includes(k.toLowerCase()));
                 if (hpKey) newChar.hp = state.hpUpdates![hpKey];
 
-                const invKey = Object.keys(state.inventoryUpdates || {}).find(k => char.name.toLowerCase().includes(k.toLowerCase()));
-                if (invKey) {
-                    // MOCK IMPLEMENTATION: Convert string[] to Item[]
-                    // Since the AI returns strings, we wrap them in basic Item objects
-                    newChar.inventory = state.inventoryUpdates![invKey].map((itemName, idx) => ({
-                        id: `item-${Date.now()}-${idx}`,
-                        name: itemName,
-                        type: 'Misc',
-                        rarity: 'Common',
-                        description: 'Objeto sin identificar',
-                        icon: '📦'
-                    }));
+                // Inventory Delta: ADD Items
+                const addedKey = Object.keys(state.itemsAdded || {}).find(k => char.name.toLowerCase().includes(k.toLowerCase()));
+                const legacyKey = Object.keys(state.inventoryUpdates || {}).find(k => char.name.toLowerCase().includes(k.toLowerCase()));
+
+                const itemsToAdd = [
+                    ...(addedKey ? state.itemsAdded![addedKey] : []),
+                    ...(legacyKey ? state.inventoryUpdates![legacyKey] : []) // Treat legacy as Add just in case
+                ];
+
+                if (itemsToAdd.length > 0) {
+                    const newItems = await Promise.all(itemsToAdd.map((n, i) => fetchOrMockItem(n, i + Date.now())));
+                    // APPEND to existing inventory
+                    newChar.inventory = [...newChar.inventory, ...newItems];
+                }
+
+                // Inventory Delta: REMOVE Items
+                const removedKey = Object.keys(state.itemsRemoved || {}).find(k => char.name.toLowerCase().includes(k.toLowerCase()));
+                if (removedKey) {
+                    const itemsToRemove = state.itemsRemoved![removedKey];
+                    // Remove first matching instance for each item name
+                    itemsToRemove.forEach(remName => {
+                        const idx = newChar.inventory.findIndex(i => i.name.toLowerCase().includes(remName.toLowerCase()));
+                        if (idx !== -1) {
+                            newChar.inventory.splice(idx, 1);
+                        }
+                    });
+                }
+
+                // Equipment (Equip/Unequip)
+                const equipKey = Object.keys(state.equipmentUpdates || {}).find(k => char.name.toLowerCase().includes(k.toLowerCase()));
+                if (equipKey) {
+                    const updates = state.equipmentUpdates![equipKey];
+                    // Iterate updates: { mainHand: "Sword" }
+                    for (const [slot, itemName] of Object.entries(updates)) {
+                        // Cast key
+                        // Ensure slot is valid keyof Equipment?
+                        const validSlots = ["head", "chest", "mainHand", "offHand", "legs", "feet", "amulet", "ring1", "ring2"];
+                        if (!validSlots.includes(slot)) continue;
+
+                        const slotKey = slot as keyof typeof newChar.equipment;
+
+                        // Handle UNEQUIP
+                        if (!itemName || itemName.toLowerCase() === 'null' || itemName === '') {
+                            newChar.equipment[slotKey] = undefined;
+                            continue;
+                        }
+
+                        // Try to find in inventory first (Moving to slot)
+                        // We clone inventory to allow mutation (splice)
+                        newChar.inventory = [...newChar.inventory];
+                        const invItemIndex = newChar.inventory.findIndex(i => i.name.toLowerCase() === itemName.toLowerCase());
+
+                        if (invItemIndex >= 0) {
+                            // Move from inv to equip
+                            newChar.equipment[slotKey] = newChar.inventory[invItemIndex];
+                            newChar.inventory.splice(invItemIndex, 1);
+                        } else {
+                            // Not in inventory? Spawn it directly (Magic or previous oversight)
+                            newChar.equipment[slotKey] = await fetchOrMockItem(itemName, 999);
+                        }
+                    }
                 }
 
                 return newChar;
-            });
+            }));
 
             // Only save if changed
+            // JSON.stringify comparison might fail on order, but good enough.
             const hasChanges = JSON.stringify(newParty) !== JSON.stringify(characters);
             if (hasChanges) {
                 saveGame(lobbyId, newParty, messages);

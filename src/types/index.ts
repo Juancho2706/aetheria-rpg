@@ -75,7 +75,10 @@ export interface Message {
 // State updates parsed from AI response
 export interface DmStateUpdate {
     hpUpdates?: Record<string, number>;
-    inventoryUpdates?: Record<string, string[]>;
+    inventoryUpdates?: Record<string, string[]>; // Deprecated: Full Sync
+    itemsAdded?: Record<string, string[]>; // Character -> Items to ADD
+    itemsRemoved?: Record<string, string[]>; // Character -> Items to REMOVE
+    equipmentUpdates?: Record<string, Record<keyof Equipment, string>>; // Character -> Slot -> ItemName
     location?: string;
     suggestedActions?: string[];
     isCombat?: boolean;

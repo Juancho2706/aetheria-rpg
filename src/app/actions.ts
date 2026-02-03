@@ -54,15 +54,19 @@ RULES:
 4. **STOP AT ROLLS**: If a player action requires a check (e.g., attacking, deceiving, climbing), DESCRIBE the setup, ASK for the roll, and **STOP**. Do NOT narrate the result yet.
 5. Adhere to D&D 5e rules.
 6. Manage health, status, and inventory.
-7. **Inventory Consistency**: IF you narrate that a player finds/receives/takes an item, YOU MUST include it in 'inventoryUpdates'. If they use/lose it, remove it.
-8. **Contextual Equipment**: At the start, adjust inventory if needed (e.g. prison = no weapons).
+7. **Inventory**: 
+   - IF player GETS items: use 'itemsAdded'.
+   - IF player LOSES/USES items: use 'itemsRemoved'.
+8. **Equipment**: IF player equips/unequips, use 'equipmentUpdates' (Slot -> Item Name).
 
 CRITICAL OUTPUT FORMAT:
 Your response must be natural text for the story in SPANISH.
 At the very end, include a JSON block wrapped in \`\`\`json\`\`\` matching this schema:
 {
   "hpUpdates": { "CharacterName": number }, 
-  "inventoryUpdates": { "CharacterName": ["item1", "item2"] }, // List ALL items the character should NOW have. This is a synchronization, so include old items too if they still have them.
+  "itemsAdded": { "CharacterName": ["New Item Name"] },
+  "itemsRemoved": { "CharacterName": ["Used Item Name"] },
+  "equipmentUpdates": { "CharacterName": { "mainHand": "Sword" } },
   "location": "Current location name (in Spanish)",
   "inCombat": boolean,
   "suggestedActions": ["Action 1", "Action 2", "Action 3"],
@@ -399,10 +403,10 @@ export async function generateNarratorAudioAction(text: string, voiceMap?: Recor
 
     console.log(`🧩 Stitching ${chunks.length} Audio Chunks...`);
 
-    // 3. Generate Audio for Each Chunk
-    const pcmBuffers: Buffer[] = [];
+    // 3. Generate Audio for Each Chunk (PARALLEL OPTIMIZATION)
+    console.log(`⚡ Generating ${chunks.length} chunks in parallel...`);
 
-    for (const chunk of chunks) {
+    const chunkPromises = chunks.map(async (chunk, index) => {
         try {
             const response = await ai.models.generateContent({
                 model: AUDIO_MODEL_NAME,
@@ -420,21 +424,30 @@ export async function generateNarratorAudioAction(text: string, voiceMap?: Recor
 
             const audioPart = response.candidates?.[0]?.content?.parts?.[0];
             if (audioPart && audioPart.inlineData && audioPart.inlineData.data) {
-                // Ensure we handle the base64 correctly
                 const chunkBuffer = Buffer.from(audioPart.inlineData.data, 'base64');
-                pcmBuffers.push(chunkBuffer);
+                return { index, buffer: chunkBuffer };
             }
+            return { index, buffer: null };
         } catch (e) {
-            console.error(`⚠️ Failed to generate chunk for voice ${chunk.voiceId}`, e);
+            console.error(`⚠️ Failed to generate chunk ${index} for voice ${chunk.voiceId}`, e);
+            return { index, buffer: null }; // Return null to skip silently (or insert silence?)
         }
-    }
+    });
+
+    const results = await Promise.all(chunkPromises);
+
+    // Sort by index to maintain narrative order and filter failures
+    const pcmBuffers = results
+        .sort((a, b) => a.index - b.index)
+        .map(r => r.buffer)
+        .filter((b): b is Buffer => b !== null);
 
     if (pcmBuffers.length === 0) {
         throw new Error("Failed to generate any audio chunks.");
     }
 
     // 4. Concatenate and Convert to WAV
-    const totalPcm = Buffer.concat(pcmBuffers);
+    const totalPcm = Buffer.concat(pcmBuffers as Uint8Array[]);
     const wavBuffer = pcmToWav(totalPcm); // Use local helper
 
     // 5. Upload or Return
@@ -499,7 +512,7 @@ export async function ensureVoiceSamplesAction(): Promise<Record<string, string>
     const AUDIO_MODEL_NAME = 'gemini-2.5-flash-preview-tts';
 
     for (const v of voices) {
-        const fileName = `voice_samples_v2 / ${v.id}.wav`;
+        const fileName = `voice_samples_v2/${v.id}.wav`;
 
         // 1. Check if exists
         const { data: existing, error: listError } = await sb.storage.from('narrations').list('voice_samples_v2', { search: `${v.id}.wav` });
