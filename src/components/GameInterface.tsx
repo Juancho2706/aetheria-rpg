@@ -2,12 +2,12 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Character, Message, DmStateUpdate } from '../types';
-import { initializeCampaignAction, resolveTurnAction, generateNarratorAudioAction } from '../app/actions';
+import { initializeCampaignAction, resolveTurnAction, generateNarratorAudioAction, summarizeGameAction } from '../app/actions';
 import { saveGame, checkAllPlayersReady } from '../lib/gameUtils';
 import { supabase } from '../lib/supabase';
 import DiceRoller from './DiceRoller';
 import CharacterSheet from './CharacterSheet';
-import { Send, MapPin, Skull, Shield, Heart, CheckCircle, Clock, HelpCircle, Volume2, Loader2, StopCircle, Settings } from 'lucide-react';
+import { Send, MapPin, Skull, Shield, Heart, CheckCircle, Clock, HelpCircle, Volume2, Loader2, StopCircle, Settings, Book, X, Feather } from 'lucide-react';
 
 interface Props {
     party: Character[];
@@ -59,6 +59,90 @@ const GameInterface: React.FC<Props> = ({ party, userEmail, lobbyId, initialMess
     const [volume, setVolume] = useState(1);
     const [showSettings, setShowSettings] = useState(false);
     const audioRef = useRef<HTMLAudioElement | null>(null);
+
+    // Journal/Memory State
+    const [showJournal, setShowJournal] = useState(false);
+    const [isSummarizing, setIsSummarizing] = useState(false); // New blocking state
+    const [journalEntries, setJournalEntries] = useState<{ id: string, title?: string, summary_text: string, created_at: string }[]>([]);
+    const [latestSummary, setLatestSummary] = useState("");
+    const lastSummarizedCount = useRef(0);
+
+    // Load Journal on Mount
+    useEffect(() => {
+        const fetchJournal = async () => {
+            const { data } = await supabase.from('journal_entries').select('*').eq('campaign_id', lobbyId).order('created_at', { ascending: false });
+            if (data && data.length > 0) {
+                setJournalEntries(data);
+                setLatestSummary(data[0].summary_text);
+                // Assume messages loaded are fresher than summary? 
+                // Ideally we'd truncate messages that are already summarized, but for now we keep them overlapping.
+            }
+        };
+        fetchJournal();
+    }, [lobbyId]);
+
+    // Check for Auto-Summary every time messages change
+    useEffect(() => {
+        const textMessages = messages.filter(m => m.sender === 'dm' || m.sender === 'player');
+        const count = textMessages.length;
+
+        // Trigger every 8 messages (approx 1-2 turns)
+        if (count > 0 && count % 8 === 0 && count > lastSummarizedCount.current) {
+            lastSummarizedCount.current = count;
+            handleAutoSummarize(textMessages.slice(-8));
+        }
+    }, [messages]);
+
+    const handleAutoSummarize = async (recentMsgs: Message[]) => {
+        if (isSummarizing) return;
+        setIsSummarizing(true);
+        console.log("📝 Generating Journal Entry...");
+
+        try {
+            const newSummary = await summarizeGameAction(latestSummary, recentMsgs);
+            if (newSummary) {
+                const title = `Capítulo ${journalEntries.length + 1}`;
+
+                // Save to DB with Self-Healing
+                const { error } = await supabase.from('journal_entries').insert({
+                    campaign_id: lobbyId,
+                    title: title,
+                    summary_text: newSummary,
+                    turn_number: messages.length
+                });
+
+                if (error) {
+                    console.warn("⚠️ Journal Insert Failed:", error.message);
+                    // Self-Healing: If foreign key fails (Campaign missing), create it
+                    if (error.code === '23503') {
+                        console.log("🛠️ Healing: Creating missing Campaign record...");
+                        await supabase.from('campaigns').upsert({
+                            id: lobbyId,
+                            user_email: userEmail,
+                            name: "Campaña Recuperada",
+                            status: 'active'
+                        });
+                        // Retry Insert
+                        await supabase.from('journal_entries').insert({
+                            campaign_id: lobbyId,
+                            title: title,
+                            summary_text: newSummary,
+                            turn_number: messages.length
+                        });
+                    }
+                }
+
+                // Update Local
+                setLatestSummary(newSummary);
+                const { data } = await supabase.from('journal_entries').select('*').eq('campaign_id', lobbyId).order('created_at', { ascending: false });
+                if (data) setJournalEntries(data);
+            }
+        } catch (e) {
+            console.error("Summary error:", e);
+        } finally {
+            setIsSummarizing(false);
+        }
+    };
 
     const handlePlayAudio = async (msgId: string, text: string) => {
         if (playingAudioId === msgId) {
@@ -295,14 +379,19 @@ const GameInterface: React.FC<Props> = ({ party, userEmail, lobbyId, initialMess
                 const addedKey = Object.keys(state.itemsAdded || {}).find(k => char.name.toLowerCase().includes(k.toLowerCase()));
                 const legacyKey = Object.keys(state.inventoryUpdates || {}).find(k => char.name.toLowerCase().includes(k.toLowerCase()));
 
-                const itemsToAdd = [
-                    ...(addedKey ? state.itemsAdded![addedKey] : []),
-                    ...(legacyKey ? state.inventoryUpdates![legacyKey] : []) // Treat legacy as Add just in case
-                ];
+                let itemsToAdd: string[] = [];
+
+                if (addedKey) {
+                    // Explicit Add (Trust DM intent to add new item)
+                    itemsToAdd = state.itemsAdded![addedKey];
+                } else if (legacyKey) {
+                    // Legacy Sync (DM lists ALL items) -> Calculate Diff (Add only missing)
+                    const existingNames = new Set(newChar.inventory.map(i => i.name.toLowerCase()));
+                    itemsToAdd = state.inventoryUpdates![legacyKey].filter(n => !existingNames.has(n.toLowerCase()));
+                }
 
                 if (itemsToAdd.length > 0) {
                     const newItems = await Promise.all(itemsToAdd.map((n, i) => fetchOrMockItem(n, i + Date.now())));
-                    // APPEND to existing inventory
                     newChar.inventory = [...newChar.inventory, ...newItems];
                 }
 
@@ -409,7 +498,7 @@ const GameInterface: React.FC<Props> = ({ party, userEmail, lobbyId, initialMess
         }));
 
         // Server Action
-        const dmMsg = await resolveTurnAction(actions, messages);
+        const dmMsg = await resolveTurnAction(actions, messages, latestSummary);
 
         // Reset Ready states
         const resetParty = characters.map(c => ({
@@ -447,7 +536,7 @@ const GameInterface: React.FC<Props> = ({ party, userEmail, lobbyId, initialMess
             )}
 
             {/* Sidebar */}
-            <div className="w-full md:w-1/4 bg-slate-900 border-r border-gray-800 p-4 overflow-y-auto">
+            <div className="w-full md:w-1/4 shrink-0 md:min-w-[280px] bg-slate-900 border-r border-gray-800 p-4 overflow-y-auto">
                 <div className="flex items-center justify-between mb-6">
                     <div className="flex items-center gap-2">
                         <div className="relative group">
@@ -466,6 +555,13 @@ const GameInterface: React.FC<Props> = ({ party, userEmail, lobbyId, initialMess
                         <h2 className="text-xl font-fantasy text-dnd-gold">El Grupo</h2>
                     </div>
                     <div className="flex items-center gap-2">
+                        <button
+                            onClick={() => setShowJournal(true)}
+                            className="bg-yellow-900/30 hover:bg-yellow-900/60 border border-yellow-800/50 text-dnd-gold p-1.5 rounded transition flex items-center gap-2 text-xs"
+                            title="Ver Diario de Notas"
+                        >
+                            <Book size={14} /> Diario
+                        </button>
                         <button
                             onClick={onLeaveLobby}
                             className="p-1.5 bg-slate-800 hover:bg-slate-700 border border-gray-700 text-gray-400 hover:text-white rounded transition text-xs"
@@ -550,41 +646,43 @@ const GameInterface: React.FC<Props> = ({ party, userEmail, lobbyId, initialMess
             </div>
 
             {/* Main Chat Area */}
-            <div className="flex-1 flex flex-col relative">
+            <div className="flex-1 flex flex-col relative min-w-0">
 
                 {/* Top Status Bar (Turns & Location) */}
                 <div className="h-12 bg-slate-950 border-b border-gray-800 flex items-center justify-between px-6 shadow-md z-10 relative">
                     <div className="flex items-center gap-4">
-                        <button
-                            onClick={() => setShowSettings(!showSettings)}
-                            className="text-gray-400 hover:text-dnd-gold transition p-1 rounded"
-                            title="Configuración"
-                        >
-                            <Settings size={18} />
-                        </button>
+                        <div className="relative">
+                            <button
+                                onClick={() => setShowSettings(!showSettings)}
+                                className="text-gray-400 hover:text-dnd-gold transition p-1 rounded"
+                                title="Configuración"
+                            >
+                                <Settings size={18} />
+                            </button>
 
-                        {/* Settings Dropdown */}
-                        {showSettings && (
-                            <div className="absolute top-12 left-4 w-64 bg-slate-900 border border-dnd-gold rounded shadow-xl p-4 z-50">
-                                <h4 className="text-dnd-gold font-bold mb-3 text-sm uppercase">Configuración de Audio</h4>
-                                <div className="flex items-center gap-2">
-                                    <Volume2 size={16} className="text-gray-400" />
-                                    <input
-                                        type="range"
-                                        min="0"
-                                        max="1"
-                                        step="0.1"
-                                        value={volume}
-                                        onChange={(e) => {
-                                            const newVol = parseFloat(e.target.value);
-                                            setVolume(newVol);
-                                            if (audioRef.current) audioRef.current.volume = newVol;
-                                        }}
-                                        className="w-full h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-dnd-gold"
-                                    />
+                            {/* Settings Dropdown */}
+                            {showSettings && (
+                                <div className="absolute top-8 left-0 w-64 bg-slate-900 border border-dnd-gold rounded shadow-xl p-4 z-50">
+                                    <h4 className="text-dnd-gold font-bold mb-3 text-sm uppercase">Configuración de Audio</h4>
+                                    <div className="flex items-center gap-2">
+                                        <Volume2 size={16} className="text-gray-400" />
+                                        <input
+                                            type="range"
+                                            min="0"
+                                            max="1"
+                                            step="0.1"
+                                            value={volume}
+                                            onChange={(e) => {
+                                                const newVol = parseFloat(e.target.value);
+                                                setVolume(newVol);
+                                                if (audioRef.current) audioRef.current.volume = newVol;
+                                            }}
+                                            className="w-full h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-dnd-gold"
+                                        />
+                                    </div>
                                 </div>
-                            </div>
-                        )}
+                            )}
+                        </div>
 
                         <div className="flex items-center gap-2 text-dnd-gold border-l border-gray-800 pl-4">
                             <Clock size={16} />
@@ -681,26 +779,53 @@ const GameInterface: React.FC<Props> = ({ party, userEmail, lobbyId, initialMess
                     </div>
 
                     {/* RIGHT: Input Group (Green + Grey + Yellow) */}
-                    <div className="flex-1 flex flex-col gap-2">
+                    <div className="flex-1 flex flex-col gap-2 min-w-0">
 
                         {/* TOP: Suggestions (Green Zone) */}
                         <div className="h-8 flex items-center">
                             {suggestedActions.length > 0 && !isLoading && !myCharacter?.isReady ? (
-                                <div className="flex gap-2 overflow-x-auto scrollbar-thin w-full items-center">
-                                    <span className="text-[10px] text-green-500 font-bold uppercase tracking-wider mr-2 shrink-0">Sugerencias:</span>
-                                    {suggestedActions.map((action, idx) => (
-                                        <button
-                                            key={idx}
-                                            onClick={() => setInput(action)}
-                                            className="whitespace-nowrap px-3 py-1 bg-green-900/20 hover:bg-green-900/40 border border-green-800 hover:border-green-500 rounded text-xs text-green-400 transition"
-                                        >
-                                            {action}
-                                        </button>
-                                    ))}
+                                <div className="w-full overflow-hidden relative group mask-gradient-x">
+                                    <style jsx>{`
+                                        @keyframes scroll {
+                                            0% { transform: translateX(0); }
+                                            100% { transform: translateX(-50%); }
+                                        }
+                                        .animate-scroll {
+                                            display: flex;
+                                            width: max-content;
+                                            animation: scroll 40s linear infinite;
+                                        }
+                                        .animate-scroll:hover {
+                                            animation-play-state: paused;
+                                        }
+                                    `}</style>
+                                    <div className="animate-scroll gap-4 px-4 hover:cursor-grab active:cursor-grabbing"
+                                        onMouseDown={(e) => {
+                                            // Optional: Simple drag logic could go here, but pause-on-hover is usually enough
+                                            // For now, let's stick to the requested "Auto-Scroll" (Ruleta)
+                                        }}
+                                    >
+                                        <span className="text-[10px] text-green-500 font-bold uppercase tracking-wider self-center shrink-0">Sugerencias:</span>
+                                        {/* Duplicate list for seamless loop */}
+                                        {[...suggestedActions, ...suggestedActions, ...suggestedActions].map((action, idx) => (
+                                            <button
+                                                key={`${idx}-${action}`}
+                                                onClick={() => setInput(action)}
+                                                className="whitespace-nowrap px-4 py-1.5 bg-green-950/40 hover:bg-green-900/60 border border-green-800/50 hover:border-green-400 rounded-full text-xs text-green-300 transition shadow-sm hover:shadow-green-900/40"
+                                            >
+                                                {action}
+                                            </button>
+                                        ))}
+                                    </div>
+
+                                    {/* Gradients to fade edges */}
+                                    <div className="absolute inset-y-0 left-0 w-8 bg-gradient-to-r from-[#111827] to-transparent pointer-events-none"></div>
+                                    <div className="absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-[#111827] to-transparent pointer-events-none"></div>
                                 </div>
                             ) : (
                                 <span className="text-[10px] text-gray-600 italic">Escribe tu acción o espera sugerencias...</span>
-                            )}
+                            )
+                            }
                         </div>
 
                         {/* BOTTOM: Input (Grey) + Button (Yellow) */}
@@ -722,7 +847,7 @@ const GameInterface: React.FC<Props> = ({ party, userEmail, lobbyId, initialMess
                             <button
                                 onClick={() => handleSend()}
                                 disabled={isLoading || !input.trim() || !canAct}
-                                className="w-24 bg-dnd-gold hover:bg-yellow-400 text-dnd-dark font-bold rounded-lg shadow-lg flex flex-col items-center justify-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                                className="w-24 shrink-0 bg-dnd-gold hover:bg-yellow-400 text-dnd-dark font-bold rounded-lg shadow-lg flex flex-col items-center justify-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed transition"
                             >
                                 <Send size={20} />
                                 <span className="text-xs uppercase tracking-wider font-extrabold">Actuar</span>
@@ -730,8 +855,68 @@ const GameInterface: React.FC<Props> = ({ party, userEmail, lobbyId, initialMess
                         </div>
                     </div>
                 </div>
+
+                {/* JOURNAL MODAL */}
+                {showJournal && (
+                    <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+                        <div className="bg-[#f4e4bc] text-dnd-dark w-full max-w-2xl h-[80vh] rounded-lg shadow-2xl flex flex-col relative overflow-hidden font-serif border-8 border-yellow-950/80 paper-texture animate-slideUp">
+
+                            {/* Header */}
+                            <div className="p-6 border-b border-yellow-800/20 bg-yellow-900/10 flex justify-between items-center shadow-sm">
+                                <h2 className="text-3xl font-fantasy text-yellow-900 flex items-center gap-3 drop-shadow-sm">
+                                    <Book size={32} className="text-yellow-800" />
+                                    Diario de Aventuras
+                                </h2>
+                                <button
+                                    onClick={() => setShowJournal(false)}
+                                    className="text-yellow-900/60 hover:text-red-700 hover:bg-yellow-900/20 p-2 rounded-full transition"
+                                >
+                                    <X size={28} />
+                                </button>
+                            </div>
+
+                            {/* Content */}
+                            <div className="flex-1 overflow-y-auto p-8 space-y-10 scrollbar-thin scrollbar-thumb-yellow-900/30 scrollbar-track-transparent">
+
+                                {journalEntries.length === 0 ? (
+                                    <div className="flex flex-col items-center justify-center h-full opacity-40 text-yellow-900">
+                                        <Book size={64} className="mb-4 text-yellow-900/50" />
+                                        <p className="text-xl font-fantasy">Las páginas están vacías...</p>
+                                        <p className="text-sm font-sans mt-2">La aventura apenas comienza.</p>
+                                    </div>
+                                ) : (
+                                    journalEntries.map((entry, idx) => (
+                                        <div key={entry.id} className="animate-fadeIn relative">
+                                            {/* Chapter Number/Title */}
+                                            <div className="flex items-baseline justify-between border-b-2 border-yellow-900/20 mb-3 pb-1">
+                                                <h3 className="text-2xl font-bold text-yellow-900">
+                                                    {entry.title || `Capítulo ${journalEntries.length - idx}`}
+                                                </h3>
+                                                <span className="text-xs text-yellow-900/60 font-sans uppercase tracking-widest">
+                                                    {new Date(entry.created_at).toLocaleString()}
+                                                </span>
+                                            </div>
+
+                                            {/* Drop Cap Text */}
+                                            <div className="prose prose-yellow max-w-none text-lg text-yellow-950/90 leading-relaxed text-justify first-letter:text-5xl first-letter:font-fantasy first-letter:text-yellow-800 first-letter:mr-2 first-letter:float-left">
+                                                {renderMarkdown(entry.summary_text)}
+                                            </div>
+
+                                            {/* Divider */}
+                                            {idx < journalEntries.length - 1 && (
+                                                <div className="flex justify-center my-8 opacity-30">
+                                                    <span className="text-2xl tracking-[1em] text-yellow-900">❖ ❖ ❖</span>
+                                                </div>
+                                            )}
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div>
-        </div>
+        </div >
     );
 };
 

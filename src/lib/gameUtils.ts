@@ -61,16 +61,48 @@ export const saveGame = async (lobbyId: string, party: Character[], messages: an
         timestamp: Date.now()
     };
 
+    // 2. Persist to Lobbies (JSON Blob for Game State)
     const { error } = await supabase
         .from('lobbies')
-        .upsert({
-            id: lobbyId,
-            game_state: gameState,
-            updated_at: new Date().toISOString()
-        });
+        .upsert(
+            {
+                id: lobbyId,
+                game_state: gameState,
+                last_updated: new Date().toISOString()
+            },
+            { onConflict: 'id' }
+        );
+
+    // 3. Persist individual Characters (Structured Data for Querying)
+    if (party.length > 0) {
+        const charsToUpsert = party.map(c => ({
+            id: c.id, // Prefer auth userId, fallback to local ID. Note: Must matching Schema ID type (UUID is best, but TEXT if adjusted)
+            campaign_id: lobbyId,
+            name: c.name,
+            class_type: c.classType,
+            level: c.level,
+            hp: c.hp,
+            max_hp: c.maxHp,
+            stats: c.stats,
+            inventory: c.inventory,
+            equipment: c.equipment,
+            // If c.ownerEmail is missing, use 'dm' or handle. Ideally should be there.
+            owner_email: c.ownerEmail || 'unknown'
+        }));
+
+        const { error: charError } = await supabase.from('characters').upsert(charsToUpsert);
+        if (charError) console.error("Error saving characters:", charError);
+    }
+
+    // 4. Update Campaign Metadata (Turn Count, etc)
+    // Optional but good for listing
+    await supabase.from('campaigns').update({
+        turn_count: messages.length,
+        last_played_at: new Date().toISOString()
+    }).eq('id', lobbyId);
 
     if (error) {
-        console.error("Error saving game to Supabase:", error);
+        console.error("Error saving game:", error);
         throw new Error(error.message);
     }
 };
@@ -80,7 +112,7 @@ export const loadGame = async (lobbyId: string) => {
         .from('lobbies')
         .select('game_state')
         .eq('id', lobbyId)
-        .single();
+        .maybeSingle();
 
     if (error) {
         if (error.code !== 'PGRST116') {
@@ -124,13 +156,19 @@ export const getUserLobbies = async (userEmail: string) => {
 };
 
 export const deleteGame = async (lobbyId: string) => {
-    const { error } = await supabase
-        .from('lobbies')
-        .delete()
-        .eq('id', lobbyId);
+    // Delete from both Lobbies (Realtime state) and Campaigns (Persistent metadata & related tables)
+    // Deleting 'campaigns' row will CASCADE delete 'journal_entries' and 'characters'.
+    const [lobbyRes, campaignRes] = await Promise.all([
+        supabase.from('lobbies').delete().eq('id', lobbyId),
+        supabase.from('campaigns').delete().eq('id', lobbyId)
+    ]);
 
-    if (error) {
-        console.error("Error deleting game:", error);
-        throw new Error(error.message);
+    if (lobbyRes.error) {
+        console.error("Error deleting lobby:", lobbyRes.error);
+        throw new Error(lobbyRes.error.message);
+    }
+
+    if (campaignRes.error) {
+        console.warn("Error deleting campaign metadata (might not exist yet):", campaignRes.error);
     }
 };

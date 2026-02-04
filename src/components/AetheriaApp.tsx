@@ -220,7 +220,18 @@ const AetheriaApp: React.FC = () => {
             const intro = await initializeCampaignAction(gameState.party);
             if ('error' in intro && intro.error) throw new Error((intro as any).error);
 
-            // 2. Save intro to Supabase -> THIS triggers everyone to switch view
+            // 2. Create Campaign Record (for Journal/Persistence)
+            const { error: campError } = await supabase.from('campaigns').upsert({
+                id: gameState.lobbyId,
+                user_email: gameState.userEmail,
+                name: `Aventura de ${gameState.party?.[0]?.name || 'Héroes'}`,
+                status: 'active',
+                current_location: 'Inicio',
+                turn_count: 0
+            });
+            if (campError) console.error("Failed to create campaign record:", campError);
+
+            // 3. Save intro to Supabase -> THIS triggers everyone to switch view
             const initialMessages: any[] = [{
                 id: crypto.randomUUID(),
                 sender: 'dm',

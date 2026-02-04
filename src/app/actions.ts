@@ -46,10 +46,10 @@ DO NOT USE "VOSOTROS", "OS", "HABÉIS". USE "USTEDES", "SU", "HAN".
 RULES:
 1. Act as the narrator and referee. Describe the environment, NPCs, and outcomes of actions.
 2. **BREVITY IS KING**: Keep responses SHORT and PUNCHY. Max 3 short paragraphs. No "walls of text".
-3. **DIALOGUE FORMAT**: You MUST format all spoken dialogue as **Name: "Dialogue"**.
-    -   For the **Player Character**, use **Tu: "..."** (since you are narrating to them).
-    -   For **NPCs**, use **Name: "..."** (e.g., **Guardia: "..."**).
-    -   **Emotions**: You can verify emotions in parentheses, e.g., **Tu (Enojado): "..."** or **Rey (Llorando): "..."**.
+3. **PERSPECTIVE & DIALOGUE**:
+    -   **NARRATION**: Use **THIRD PERSON** ("Plolo camina", "Grom ataca"). Do NOT use "Tu/Usted" to refer to specific players to avoid confusion.
+    -   **PC DIALOGUE**: **NEVER** invent spoken dialogue for Player Characters. Only narrate the *actions* and *consequences* based on what they declared.
+    -   **NPCs**: You CAN generate dialogue for NPCs. Format: **Nombre: "..."**.
     -   **Narrator**: Do NOT use a prefix for descriptions. Just write the text.
 4. **STOP AT ROLLS**: If a player action requires a check (e.g., attacking, deceiving, climbing), DESCRIBE the setup, ASK for the roll, and **STOP**. Do NOT narrate the result yet.
 5. Adhere to D&D 5e rules.
@@ -69,7 +69,9 @@ At the very end, include a JSON block wrapped in \`\`\`json\`\`\` matching this 
   "equipmentUpdates": { "CharacterName": { "mainHand": "Sword" } },
   "location": "Current location name (in Spanish)",
   "inCombat": boolean,
-  "suggestedActions": ["Action 1", "Action 2", "Action 3"],
+  "suggestedActions": ["Action 1", "Action 2", "Action 3", "Action 4", "Action 5", "Action 6"],
+  // NOTE: Provide EXACTLY 6 brief, creative, distinct suggested actions for the player.
+  // Actions should cover different approaches: Aggressive, Diplomatic, Stealthy, Magical, Exploratory, etc.
   "requiredRoll": { "characterName": "Name", "reason": "Reason", "rollType": "Stat or Skill" } // OPTIONAL: Only if you are waiting for a roll
 }
 `;
@@ -173,7 +175,8 @@ export async function initializeCampaignAction(party: Character[]): Promise<Mess
 
 export async function resolveTurnAction(
     actions: { characterName: string; action: string; roll?: string }[],
-    history: Message[]
+    history: Message[],
+    previousSummary: string = "" // NEW: Receive context summary
 ): Promise<Message> {
     const ai = getAI();
 
@@ -189,12 +192,16 @@ export async function resolveTurnAction(
     Recuerda responder en ESPAÑOL.
     `;
 
-    // OPTIMIZATION: Only send the last 15 messages to save tokens and avoid context limit errors.
-    const recentHistory = history.slice(-15);
+    // OPTIMIZATION (Memory Window): 
+    // If we have a summary, we only need the last few messages (~10) to maintain continuity.
+    // If no summary, we keep more history (~20) but still truncate to save tokens.
+    const recentHistory = previousSummary ? history.slice(-10) : history.slice(-20);
     const chatHistory = mapHistoryToContent(recentHistory);
 
     try {
-        const contents = [
+        const contents: Content[] = [
+            // Inject Summary as "System Context" (disguised as User message at start)
+            ...(previousSummary ? [{ role: 'user', parts: [{ text: `[MEMORIA DE LARGO PLAZO - RESUMEN ANTERIOR]:\n${previousSummary}\n\n[HISTORIAL RECIENTE]:` }] } as Content] : []),
             ...chatHistory,
             { role: 'user', parts: [{ text: prompt }] } as Content
         ];
@@ -575,4 +582,51 @@ export async function ensureVoiceSamplesAction(): Promise<Record<string, string>
 
     console.log("🔊 DONE. URLs:", sampleUrls);
     return sampleUrls;
+}
+
+// Generate Journal Summary
+export async function summarizeGameAction(previousSummary: string, recentMessages: Message[]): Promise<string> {
+    const ai = getAI();
+
+    // Filter out system/hidden messages, keep only story relevant ones
+    const storyText = recentMessages
+        .filter(m => m.sender === 'dm' || m.sender === 'player')
+        .map(m => `${m.sender.toUpperCase()}: ${m.text}`)
+        .join('\n');
+
+    const prompt = `
+    Actúa como el Cronista oficial de una saga de fantasía épica.
+    
+    CONTEXTO ANTERIOR:
+    "${previousSummary || "La aventura acaba de comenzar."}"
+
+    NUEVOS EVENTOS (Transcripción):
+    ${storyText}
+
+    TU TAREA:
+    Genera un nuevo párrafo de "Entrada de Diario" que resuma los NUEVOS EVENTOS y los conecte coherentemente con el CONTEXTO ANTERIOR.
+    - Se conciso pero épico.
+    - Mantén registro de nombres propios, lugares clave y objetos importantes encontrados.
+    - Ignora las tiradas de dados o discusiones de reglas, céntrate en la narrativa.
+    - El estilo debe ser literario, como un libro de historia.
+    
+    Responde SOLAMENTE con el texto del resumen en ESPAÑOL.
+    `;
+
+    try {
+        const response = await ai.models.generateContent({
+            model: TEXT_MODEL_NAME, // Using same model for smarts, or could use Flash for speed
+            contents: [{ role: 'user', parts: [{ text: prompt }] }],
+            config: {
+                temperature: 0.7, // Slightly less creative, more factual
+            }
+        });
+
+        const text = response.candidates?.[0]?.content?.parts?.[0]?.text;
+        return text || "Error generando resumen.";
+
+    } catch (e) {
+        console.error("Summary Generation Failed", e);
+        return "Hubo un error registrando los eventos recientes en el diario.";
+    }
 }
