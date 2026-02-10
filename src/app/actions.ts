@@ -447,7 +447,7 @@ export async function generateNarratorAudioAction(text: string, voiceMap?: Recor
     const pcmBuffers = results
         .sort((a, b) => a.index - b.index)
         .map(r => r.buffer)
-        .filter((b): b is Buffer => b !== null);
+        .filter((b) => b !== null) as Buffer[];
 
     if (pcmBuffers.length === 0) {
         throw new Error("Failed to generate any audio chunks.");

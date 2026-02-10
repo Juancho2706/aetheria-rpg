@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { GameState, Character } from '@/types';
-import { loadGame, saveGame } from '@/lib/gameUtils';
+import { loadGame, saveGame, deleteGame } from '@/lib/gameUtils';
 import { supabase } from '@/lib/supabase';
 import LobbyMenu from '@/components/LobbyMenu';
 import { initializeCampaignAction } from '@/app/actions';
@@ -30,6 +30,7 @@ const AetheriaApp: React.FC = () => {
     const [hasEntered, setHasEntered] = useState(false);
     const [origin, setOrigin] = useState('...');
     const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set());
+    const [isAuthChecking, setIsAuthChecking] = useState(true); // NEW: Prevent flash of Landing Page
 
     useEffect(() => {
         setOrigin(window.location.origin);
@@ -61,6 +62,7 @@ const AetheriaApp: React.FC = () => {
             if (session?.user?.email) {
                 handleUserAuthenticated(session.user.email);
             }
+            setIsAuthChecking(false); // Auth check complete
         });
 
         // Listen for auth changes
@@ -195,6 +197,17 @@ const AetheriaApp: React.FC = () => {
 
         try {
             // Initialize Lobby in DB immediately with empty arrays
+            // Fix 409 Conflict: Create 'campaigns' row NOW so Characters can link to it later (Foreign Key)
+            const { error: campError } = await supabase.from('campaigns').upsert({
+                id: randomId,
+                user_email: gameState.userEmail || 'unknown',
+                name: `Campaña de ${gameState.userEmail?.split('@')[0] || 'Aventurero'}`,
+                status: 'preparing',
+                turn_count: 0
+            });
+
+            if (campError) console.error("Error creating campaign row:", campError);
+
             await saveGame(randomId, [], []);
         } catch (e) {
             console.error("Failed to init lobby", e);
@@ -203,7 +216,17 @@ const AetheriaApp: React.FC = () => {
         setIsLoading(false);
     };
 
-    const handleLeaveLobby = () => {
+    const handleLeaveLobby = async () => {
+        // Feature: Suggest deleting if empty/abandoned to prevent garbage
+        if ((!gameState.messages || gameState.messages.length === 0)) {
+            // Game not started. Ask to clean up.
+            // Heuristic: If I am the creator, Party is usually empty initially or has just me.
+            // If party is empty, ANYONE leaving is basically abandoning it.
+            if (confirm("La partida aún no ha comenzado. ¿Quieres borrar esta sala para limpiar la base de datos?")) {
+                if (gameState.lobbyId) await deleteGame(gameState.lobbyId);
+            }
+        }
+
         setGameState(prev => ({ ...prev, lobbyId: null, party: [], messages: [] }));
         setInputLobbyId('');
         const newUrl = new URL(window.location.href);
@@ -307,6 +330,16 @@ const AetheriaApp: React.FC = () => {
     };
 
     // --- RENDER STATES ---
+
+    // 0. AUTH LOADING (Spinning Loader)
+    if (isAuthChecking) {
+        return (
+            <div className="min-h-screen bg-dnd-dark flex flex-col items-center justify-center text-dnd-gold">
+                <Loader2 size={48} className="animate-spin mb-4" />
+                <span className="font-fantasy text-xl tracking-widest animate-pulse">Conectando al Reino...</span>
+            </div>
+        );
+    }
 
     // 1. LANDING PAGE (Only if not logged in)
     if (!gameState.isLoggedIn) {

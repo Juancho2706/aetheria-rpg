@@ -68,7 +68,7 @@ export const saveGame = async (lobbyId: string, party: Character[], messages: an
             {
                 id: lobbyId,
                 game_state: gameState,
-                last_updated: new Date().toISOString()
+                updated_at: new Date().toISOString()
             },
             { onConflict: 'id' }
         );
