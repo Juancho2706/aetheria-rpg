@@ -6,11 +6,13 @@ import { HelpCircle } from 'lucide-react';
 
 interface Props {
     onRoll: (result: string, total: number) => void;
+    minimal?: boolean;
 }
 
-const DiceRoller: React.FC<Props> = ({ onRoll }) => {
-    const [lastRoll, setLastRoll] = useState<{ total: number, details: string } | null>(null);
+const DiceRoller: React.FC<Props> = ({ onRoll, minimal }) => {
+    const [lastRoll, setLastRoll] = useState<any>(null); // Type loose for speed
     const [isRolling, setIsRolling] = useState(false);
+
 
     const handleRoll = (dice: string) => {
         setIsRolling(true);

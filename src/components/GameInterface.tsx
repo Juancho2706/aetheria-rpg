@@ -525,9 +525,9 @@ const GameInterface: React.FC<Props> = ({ party, userEmail, lobbyId, initialMess
     };
 
     return (
-        <div className="flex flex-col md:flex-row h-screen bg-dnd-dark overflow-hidden text-gray-200 font-body">
+        <div className="flex flex-col md:flex-row h-screen bg-black text-gray-200 font-body p-2 gap-2 overflow-hidden">
 
-            {/* Character Sheet Modal */}
+            {/* Character Sheet Modal - Keep same */}
             {selectedCharacter && (
                 <CharacterSheet
                     character={selectedCharacter}
@@ -535,389 +535,292 @@ const GameInterface: React.FC<Props> = ({ party, userEmail, lobbyId, initialMess
                 />
             )}
 
-            {/* Sidebar */}
-            <div className="w-full md:w-1/4 shrink-0 md:min-w-[280px] bg-slate-900 border-r border-gray-800 p-4 overflow-y-auto">
-                <div className="flex items-center justify-between mb-6">
-                    <div className="flex items-center gap-2">
-                        <div className="relative group">
-                            <HelpCircle size={18} className="text-gray-500 hover:text-dnd-gold cursor-help" />
-                            <div className="absolute left-0 top-6 w-64 bg-slate-950 border border-dnd-gold/30 p-3 rounded shadow-xl text-xs text-gray-300 hidden group-hover:block z-50 pointer-events-none">
-                                <strong className="text-dnd-gold block mb-1">Mecánicas de Juego</strong>
-                                <p className="mb-2">Aetheria es un RPG narrativo colaborativo. El DM (IA) narra la historia y tú decides qué hacer.</p>
-                                <ul className="list-disc list-inside space-y-1">
-                                    <li><strong>Turnos:</strong> Todos declaran su acción. Cuando todos estén listos, el DM resuelve el turno.</li>
-                                    <li><strong>Combate:</strong> Si hay combate, tira iniciativa y ataques usando la bandeja de dados.</li>
-                                    <li><strong>Inventario:</strong> Haz click en tu personaje para ver su hoja detallada.</li>
-                                </ul>
+            {/* LEFT PANEL: Group (Library Style) */}
+            <div className="w-full md:w-1/4 shrink-0 md:min-w-[280px] bg-[#121212] rounded-lg overflow-y-auto flex flex-col">
+                <div className="p-4 bg-[#121212] shadow-sm z-10 sticky top-0">
+                    <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-2 text-gray-300 hover:text-white transition cursor-pointer">
+                            <div className="relative group">
+                                <HelpCircle size={20} />
+                                <div className="absolute left-0 top-6 w-64 bg-[#282828] border border-gray-700 p-3 rounded shadow-xl text-xs text-gray-300 hidden group-hover:block z-50 pointer-events-none">
+                                    <strong className="text-white block mb-1">Guía Rápida</strong>
+                                    <p>Aetheria es un RPG narrativo. Declara tu acción y espera al DM.</p>
+                                </div>
                             </div>
+                            <h2 className="font-bold text-base">Tu Grupo</h2>
                         </div>
 
-                        <h2 className="text-xl font-fantasy text-dnd-gold">El Grupo</h2>
+                        <div className="flex items-center gap-2">
+                            <button
+                                onClick={() => setShowJournal(true)}
+                                className="text-gray-400 hover:text-white transition p-1"
+                                title="Ver Diario"
+                            >
+                                <Book size={20} />
+                            </button>
+                            <button
+                                onClick={onLeaveLobby}
+                                className="text-gray-400 hover:text-white transition p-1"
+                                title="Salir"
+                            >
+                                <X size={20} />
+                            </button>
+                        </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                        <button
-                            onClick={() => setShowJournal(true)}
-                            className="bg-yellow-900/30 hover:bg-yellow-900/60 border border-yellow-800/50 text-dnd-gold p-1.5 rounded transition flex items-center gap-2 text-xs"
-                            title="Ver Diario de Notas"
-                        >
-                            <Book size={14} /> Diario
-                        </button>
-                        <button
-                            onClick={onLeaveLobby}
-                            className="p-1.5 bg-slate-800 hover:bg-slate-700 border border-gray-700 text-gray-400 hover:text-white rounded transition text-xs"
-                            title="Leave to Lobby"
-                        >
-                            ← Lobby
-                        </button>
-                        <span className={`w-2 h-2 rounded-full ${isLoading ? 'bg-yellow-500 animate-pulse' : 'bg-green-500'}`}></span>
+
+                    {/* Filters / Pills (Decorative) */}
+                    <div className="flex gap-2">
+                        <span className="px-3 py-1 bg-[#2a2a2a] hover:bg-[#3a3a3a] rounded-full text-xs font-bold text-white cursor-pointer transition">Aventureros</span>
+                        <span className="px-3 py-1 bg-[#121212] hover:bg-[#2a2a2a] rounded-full text-xs font-bold text-white cursor-pointer transition">NPCs</span>
                     </div>
                 </div>
 
-                <div className="space-y-4">
+                <div className="flex-1 p-2 space-y-1 overflow-y-auto">
                     {characters.map(char => (
                         <div
                             key={char.id}
                             onClick={() => setSelectedCharacter(char)}
                             className={`
-                                cursor-pointer
-                                bg-dnd-panel border ${char.isReady ? 'border-green-600/50' : 'border-gray-700'} 
-                                hover:border-dnd-gold/80 hover:shadow-lg hover:shadow-yellow-900/10 hover:-translate-y-0.5
-                                rounded-lg p-3 shadow relative overflow-hidden group transition-all duration-300
+                                cursor-pointer group flex items-center gap-3 p-2 rounded-md transition-colors
+                                ${char.isReady ? 'bg-[#181818] hover:bg-[#282828]' : 'hover:bg-[#1a1a1a]'}
                             `}
                         >
-                            {/* Hover Overlay Hint */}
-                            <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-20 pointer-events-none">
-                                <span className="text-xs font-bold text-white bg-black/60 px-2 py-1 rounded border border-white/20">Ver Ficha</span>
-                            </div>
-
-                            <div className="flex justify-between items-start mb-2 gap-3 relative z-10 transition group-hover:blur-[1px]">
-                                {char.avatarUrl ? (
-                                    <img src={char.avatarUrl} alt="Av" className="w-12 h-12 rounded-lg object-cover border border-gray-600 shadow-md" />
-                                ) : (
-                                    <div className="w-12 h-12 bg-slate-800 rounded-lg border border-gray-700 flex items-center justify-center text-xl shadow-md">👤</div>
-                                )}
-                                <div className="flex-1">
-                                    <h3 className="font-bold text-gray-100 text-sm">{char.name}</h3>
-                                    <p className="text-[10px] text-gray-400 uppercase tracking-widest mb-1">{char.classType} • Niv {char.level}</p>
-
-                                    <div className="flex items-center gap-1">
-                                        {char.isReady ? (
-                                            <span className="text-[10px] text-green-400 flex items-center gap-1 font-bold uppercase py-0.5 px-1.5 bg-green-950/30 rounded border border-green-900/50"><CheckCircle size={10} /> Listo</span>
-                                        ) : (
-                                            <span className="text-[10px] text-gray-400 flex items-center gap-1 font-bold uppercase py-0.5 px-1.5 bg-slate-800 rounded border border-gray-700"><Clock size={10} /> Pensando...</span>
-                                        )}
-                                    </div>
-                                </div>
-                                {char.hp < char.maxHp * 0.3 && <Skull className="text-red-500 animate-pulse" size={16} />}
-                            </div>
-
-                            {/* HP Bar - Slimmer */}
-                            <div className="w-full bg-gray-800 h-1.5 rounded-full overflow-hidden mb-2 relative z-10">
-                                <div
-                                    className={`h-full transition-all duration-500 ${char.hp < char.maxHp * 0.3 ? 'bg-red-600' : 'bg-green-600'}`}
-                                    style={{ width: `${Math.max(0, (char.hp / char.maxHp) * 100)}%` }}
-                                ></div>
-                            </div>
-
-                            <div className="flex justify-between text-xs font-mono mb-1 relative z-10 text-gray-400">
-                                <span className="flex items-center gap-1"><Heart size={10} className="text-red-500" /> {char.hp}/{char.maxHp}</span>
-                                <span className="flex items-center gap-1"><Shield size={10} className="text-blue-400" /> AC {10 + Math.floor((char.stats.DEX - 10) / 2)}</span>
-                            </div>
-
-                            {/* Recent Loot: Show only last 3 items as small icons */}
-                            {char.inventory.length > 0 && (
-                                <div className="pt-2 border-t border-gray-800 mt-1 relative z-10">
-                                    <div className="flex gap-1 overflow-hidden">
-                                        {char.inventory.slice(-4).reverse().map((item, idx) => (
-                                            <div key={idx} className="w-6 h-6 bg-slate-900 border border-gray-700 rounded flex items-center justify-center text-[10px] text-gray-500" title={item.name}>
-                                                {item.icon || '📦'}
-                                            </div>
-                                        ))}
-                                        {char.inventory.length > 4 && (
-                                            <div className="w-6 h-6 flex items-center justify-center text-[9px] text-gray-500 font-bold">+{(char.inventory.length - 4)}</div>
-                                        )}
-                                    </div>
+                            {char.avatarUrl ? (
+                                <img src={char.avatarUrl} alt="Av" className={`w-12 h-12 rounded bg-[#333] object-cover ${char.hp < char.maxHp * 0.3 ? 'border-2 border-red-500' : ''}`} />
+                            ) : (
+                                <div className="w-12 h-12 rounded bg-[#333] flex items-center justify-center text-xl text-gray-400">
+                                    {char.name.charAt(0)}
                                 </div>
                             )}
 
+                            <div className="flex-1 min-w-0">
+                                <h3 className={`font-bold text-sm truncate ${char.isReady ? 'text-green-500' : 'text-gray-200'}`}>{char.name}</h3>
+                                <p className="text-[11px] text-gray-500 truncate capitalize">{char.classType}</p>
+                            </div>
+
+                            {char.isReady && (
+                                <div className="text-green-500"><Volume2 size={14} className="animate-pulse" /></div>
+                            )}
                         </div>
                     ))}
                 </div>
             </div>
 
-            {/* Main Chat Area */}
-            <div className="flex-1 flex flex-col relative min-w-0">
+            {/* CENTER PANEL: Dialogue (Main Feed Style) */}
+            <div className="flex-1 bg-[#121212] rounded-lg flex flex-col overflow-hidden relative min-w-0">
 
-                {/* Top Status Bar (Turns & Location) */}
-                <div className="h-12 bg-slate-950 border-b border-gray-800 flex items-center justify-between px-6 shadow-md z-10 relative">
+                {/* Gradient Header Overlay */}
+                <div className="absolute top-0 left-0 right-0 h-32 bg-gradient-to-b from-[#2a2a2a] to-[#121212] opacity-50 pointer-events-none z-0"></div>
+
+                {/* Sticky Header */}
+                <div className="h-16 flex items-center justify-between px-6 z-10 sticky top-0 bg-[#121212]/30 backdrop-blur-md">
+                    <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-full bg-dnd-gold flex items-center justify-center shadow-lg shadow-yellow-900/20">
+                            {isLoading ? <Loader2 size={16} className="text-black animate-spin" /> : <Shield size={16} className="text-black" />}
+                        </div>
+                        <span className="font-bold text-white text-lg tracking-tight">Campaña Activa</span>
+                    </div>
+
                     <div className="flex items-center gap-4">
-                        <div className="relative">
-                            <button
-                                onClick={() => setShowSettings(!showSettings)}
-                                className="text-gray-400 hover:text-dnd-gold transition p-1 rounded"
-                                title="Configuración"
-                            >
-                                <Settings size={18} />
-                            </button>
-
-                            {/* Settings Dropdown */}
-                            {showSettings && (
-                                <div className="absolute top-8 left-0 w-64 bg-slate-900 border border-dnd-gold rounded shadow-xl p-4 z-50">
-                                    <h4 className="text-dnd-gold font-bold mb-3 text-sm uppercase">Configuración de Audio</h4>
-                                    <div className="flex items-center gap-2">
-                                        <Volume2 size={16} className="text-gray-400" />
-                                        <input
-                                            type="range"
-                                            min="0"
-                                            max="1"
-                                            step="0.1"
-                                            value={volume}
-                                            onChange={(e) => {
-                                                const newVol = parseFloat(e.target.value);
-                                                setVolume(newVol);
-                                                if (audioRef.current) audioRef.current.volume = newVol;
-                                            }}
-                                            className="w-full h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-dnd-gold"
-                                        />
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-
-                        <div className="flex items-center gap-2 text-dnd-gold border-l border-gray-800 pl-4">
-                            <Clock size={16} />
-                            <span className="font-fantasy tracking-wider text-sm">Turno {messages.filter(m => m.sender === 'dm').length || 1}</span>
-                        </div>
+                        <span className="text-xs font-bold text-gray-400 uppercase tracking-widest hidden md:block">
+                            TURNO {messages.filter(m => m.sender === 'dm').length || 1}
+                        </span>
+                        <button
+                            onClick={() => setShowSettings(!showSettings)}
+                            className="text-gray-400 hover:text-white transition"
+                        >
+                            <Settings size={20} />
+                        </button>
                     </div>
 
-                    <div className="flex items-center gap-2 text-gray-300">
-                        <MapPin size={16} className="text-dnd-gold" />
-                        <span className="text-sm font-semibold italic truncate">{location}</span>
-                    </div>
-                </div>
-
-                <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6" ref={scrollRef}>
-                    {messages.map((msg) => (
-                        <div key={msg.id} className={`flex flex-col ${msg.sender === 'player' ? 'items-end' : 'items-start'}`}>
-                            <div
-                                className={`
-                            max-w-[85%] md:max-w-[75%] rounded-lg p-4 shadow-xl text-base leading-relaxed
-                            ${msg.sender === 'player'
-                                        ? 'bg-slate-700 text-white rounded-br-none border border-slate-600'
-                                        : msg.sender === 'system'
-                                            ? 'bg-red-900/30 text-red-200 border border-red-900 w-full text-center text-sm'
-                                            : 'bg-slate-800 text-gray-200 rounded-bl-none border border-dnd-gold/30'
-                                    }
-                        `}
-                            >
-                                {msg.sender === 'dm' && (
-                                    <div className="flex items-center justify-between mb-1 border-b border-red-900/30 pb-1">
-                                        <span className="text-xs text-dnd-gold font-bold font-fantasy">Dungeon Master</span>
-                                        <button
-                                            onClick={() => handlePlayAudio(msg.id, msg.text)}
-                                            disabled={msg.metadata?.audioGenerating && playingAudioId !== msg.id}
-                                            className={`
-                                                p-1 rounded-full transition 
-                                                ${playingAudioId === msg.id || msg.metadata?.audioGenerating
-                                                    ? 'text-red-400 cursor-wait'
-                                                    : 'text-gray-500 hover:text-dnd-gold hover:bg-red-900/40'}
-                                                ${msg.metadata?.audioGenerating && playingAudioId !== msg.id ? 'opacity-50' : ''}
-                                            `}
-                                            title={playingAudioId === msg.id ? "Detener" : msg.metadata?.audioGenerating ? "Generando audio..." : "Escuchar Narración"}
-                                        >
-                                            {playingAudioId === msg.id || msg.metadata?.audioGenerating ? (
-                                                <div className="relative">
-                                                    {playingAudioId === msg.id && !audioRef.current?.paused ? (
-                                                        <StopCircle size={16} /> // Playing -> Stop
-                                                    ) : (
-                                                        <Loader2 size={16} className="animate-spin" /> // Generating or Loading
-                                                    )}
-                                                </div>
-                                            ) : (
-                                                <Volume2 size={14} />
-                                            )}
-                                        </button>
-                                    </div>
-                                )}
-
-                                <div className="whitespace-pre-wrap">{renderMarkdown(msg.text)}</div>
-                            </div>
-                        </div>
-                    ))}
-
-                    {/* Thinking / Waiting UI */}
-                    {(isLoading || (myCharacter?.isReady && !checkAllPlayersReady(characters))) && (
-                        <div className="flex items-center justify-center p-4">
-                            <div className="bg-slate-800 p-4 rounded-lg border border-dnd-gold/30 flex items-center gap-3">
-                                {isLoading ? (
-                                    <>
-                                        <div className="w-2 h-2 bg-dnd-gold rounded-full animate-bounce"></div>
-                                        <div className="w-2 h-2 bg-dnd-gold rounded-full animate-bounce delay-100"></div>
-                                        <div className="w-2 h-2 bg-dnd-gold rounded-full animate-bounce delay-200"></div>
-                                        <span className="text-sm text-gray-400">El DM está tejiendo el destino...</span>
-                                    </>
-                                ) : (
-                                    <span className="text-sm text-green-400 animate-pulse">Esperando a otros miembros del grupo...</span>
-                                )}
+                    {showSettings && (
+                        <div className="absolute top-14 right-6 w-64 bg-[#282828] border border-[#333] rounded shadow-xl p-4 z-50">
+                            <h4 className="text-white font-bold mb-3 text-xs uppercase">Volumen</h4>
+                            <div className="flex items-center gap-3">
+                                <Volume2 size={16} className="text-gray-400" />
+                                <input
+                                    type="range"
+                                    min="0"
+                                    max="1"
+                                    step="0.1"
+                                    value={volume}
+                                    onChange={(e) => {
+                                        const newVol = parseFloat(e.target.value);
+                                        setVolume(newVol);
+                                        if (audioRef.current) audioRef.current.volume = newVol;
+                                    }}
+                                    className="w-full h-1 bg-gray-600 rounded-lg appearance-none cursor-pointer accent-green-500"
+                                />
                             </div>
                         </div>
                     )}
                 </div>
 
-                {/* Bottom Area: Dice (Left) + Input Group (Right) */}
-                <div className="p-4 bg-slate-950 border-t border-gray-800 flex gap-4 h-48 md:h-40">
+                {/* Chat Feed */}
+                <div className="flex-1 overflow-y-auto px-4 py-2 space-y-4 relative z-10" ref={scrollRef}>
+                    {messages.map((msg) => (
+                        <div key={msg.id} className={`flex flex-col gap-1 group ${msg.sender === 'player' ? 'items-end' : 'items-start'}`}>
 
-                    {/* LEFT: Dice Roller (Red Zone) */}
-                    <div className="w-1/4 min-w-[120px] max-w-[200px]">
-                        {canAct ? (
-                            <DiceRoller onRoll={handleRoll} />
-                        ) : (
-                            <div className="h-full border border-ray-700/50 rounded-lg flex items-center justify-center text-gray-500 text-xs text-center p-2 bg-slate-900/50">
-                                <span>No puedes lanzar ahora</span>
+                            {/* Sender Name specific for Player to mimic 'Author' line */}
+                            {msg.sender === 'dm' && (
+                                <span className="text-[11px] font-bold text-dnd-gold ml-1 mb-0.5 opacity-80 flex items-center gap-1">
+                                    NARRADOR
+                                    <button
+                                        onClick={() => handlePlayAudio(msg.id, msg.text)}
+                                        disabled={msg.metadata?.audioGenerating && playingAudioId !== msg.id}
+                                        className={`ml-2 hover:text-white transition ${playingAudioId === msg.id ? 'text-green-500' : 'text-gray-500'}`}
+                                    >
+                                        {playingAudioId === msg.id ? <StopCircle size={10} /> : <Volume2 size={10} />}
+                                    </button>
+                                </span>
+                            )}
+
+                            <div
+                                className={`
+                                    max-w-[90%] md:max-w-[85%] rounded-[1rem] px-4 py-3 text-sm leading-relaxed shadow-sm
+                                    ${msg.sender === 'player'
+                                        ? 'bg-[#2a2a2a] text-white rounded-br-none hover:bg-[#333] transition-colors'
+                                        : msg.sender === 'dm'
+                                            ? 'bg-transparent text-gray-300 w-full pl-0 font-serif text-base italic leading-7' // DM looks like lyrics/text on page
+                                            : 'bg-red-900/10 text-red-200 w-full text-center text-xs py-2 border border-red-900/20 rounded-md'
+                                    }
+                                `}
+                            >
+                                <div className="whitespace-pre-wrap">{renderMarkdown(msg.text)}</div>
                             </div>
-                        )}
+
+                            <span className="text-[10px] text-gray-600 opacity-0 group-hover:opacity-100 transition-opacity px-1">
+                                {new Date(Number(msg.id)).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                        </div>
+                    ))}
+
+                    {/* Loaders */}
+                    {isLoading && (
+                        <div className="flex items-center gap-3 p-4 opacity-50">
+                            <div className="flex gap-1">
+                                <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-bounce"></div>
+                                <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-bounce delay-100"></div>
+                                <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-bounce delay-200"></div>
+                            </div>
+                        </div>
+                    )}
+
+                    <div ref={scrollRef} className="h-4" />
+                </div>
+
+                {/* Input Area (Bottom) - Floating Look */}
+                <div className="p-4 bg-gradient-to-t from-[#121212] via-[#121212] to-transparent">
+                    {/* Suggestions "Pills" */}
+                    <div className="mb-2 h-8 flex items-center gap-2 overflow-x-auto no-scrollbar">
+                        {suggestedActions.map((action, idx) => (
+                            <button
+                                key={idx}
+                                onClick={() => setInput(action)}
+                                className="whitespace-nowrap px-3 py-1 bg-[#282828] hover:bg-[#333] rounded-full text-xs text-white transition border border-transparent hover:border-gray-600 shrink-0"
+                            >
+                                {action}
+                            </button>
+                        ))}
                     </div>
 
-                    {/* RIGHT: Input Group (Green + Grey + Yellow) */}
-                    <div className="flex-1 flex flex-col gap-2 min-w-0">
-
-                        {/* TOP: Suggestions (Green Zone) */}
-                        <div className="h-8 flex items-center">
-                            {suggestedActions.length > 0 && !isLoading && !myCharacter?.isReady ? (
-                                <div className="w-full overflow-hidden relative group mask-gradient-x">
-                                    <style jsx>{`
-                                        @keyframes scroll {
-                                            0% { transform: translateX(0); }
-                                            100% { transform: translateX(-50%); }
-                                        }
-                                        .animate-scroll {
-                                            display: flex;
-                                            width: max-content;
-                                            animation: scroll 40s linear infinite;
-                                        }
-                                        .animate-scroll:hover {
-                                            animation-play-state: paused;
-                                        }
-                                    `}</style>
-                                    <div className="animate-scroll gap-4 px-4 hover:cursor-grab active:cursor-grabbing"
-                                        onMouseDown={(e) => {
-                                            // Optional: Simple drag logic could go here, but pause-on-hover is usually enough
-                                            // For now, let's stick to the requested "Auto-Scroll" (Ruleta)
-                                        }}
-                                    >
-                                        <span className="text-[10px] text-green-500 font-bold uppercase tracking-wider self-center shrink-0">Sugerencias:</span>
-                                        {/* Duplicate list for seamless loop */}
-                                        {[...suggestedActions, ...suggestedActions, ...suggestedActions].map((action, idx) => (
-                                            <button
-                                                key={`${idx}-${action}`}
-                                                onClick={() => setInput(action)}
-                                                className="whitespace-nowrap px-4 py-1.5 bg-green-950/40 hover:bg-green-900/60 border border-green-800/50 hover:border-green-400 rounded-full text-xs text-green-300 transition shadow-sm hover:shadow-green-900/40"
-                                            >
-                                                {action}
-                                            </button>
-                                        ))}
-                                    </div>
-
-                                    {/* Gradients to fade edges */}
-                                    <div className="absolute inset-y-0 left-0 w-8 bg-gradient-to-r from-[#111827] to-transparent pointer-events-none"></div>
-                                    <div className="absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-[#111827] to-transparent pointer-events-none"></div>
-                                </div>
-                            ) : (
-                                <span className="text-[10px] text-gray-600 italic">Escribe tu acción o espera sugerencias...</span>
-                            )
-                            }
+                    <div className="flex gap-3 h-14">
+                        {/* Dice Roller (Compact) */}
+                        <div className="w-14 h-14 shrink-0 bg-[#282828] rounded-md overflow-hidden hover:ring-1 hover:ring-gray-500 transition">
+                            {canAct ? <DiceRoller onRoll={handleRoll} minimal /> : (
+                                <div className="w-full h-full flex items-center justify-center text-gray-600"><HelpCircle size={16} /></div>
+                            )}
                         </div>
 
-                        {/* BOTTOM: Input (Grey) + Button (Yellow) */}
-                        <div className="flex-1 flex gap-2">
-                            <textarea
+                        {/* Input Field */}
+                        <div className="flex-1 bg-[#282828] rounded-full flex items-center px-4 hover:ring-1 hover:ring-gray-500 transition-all focus-within:ring-1 focus-within:ring-white">
+                            <input
                                 value={input}
                                 onChange={(e) => setInput(e.target.value)}
                                 onKeyDown={(e) => {
-                                    if (e.key === 'Enter' && !e.shiftKey) {
-                                        e.preventDefault();
-                                        handleSend();
-                                    }
+                                    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
                                 }}
-                                placeholder={!myCharacter ? "Modo Espectador" : myCharacter.isReady ? "Accion enviada esperanda resolucion..." : "¿Qué quieres hacer?"}
-                                className="flex-1 bg-gray-800 border border-gray-700 rounded-lg p-3 text-white focus:border-dnd-gold focus:outline-none placeholder-gray-500 shadow-inner resize-none text-sm"
-                                disabled={isLoading || !canAct}
+                                disabled={!canAct}
+                                placeholder={isLoading ? "..." : "¿Qué quieres hacer?"}
+                                className="flex-1 bg-transparent border-none focus:ring-0 text-sm text-white placeholder-gray-500 outline-none"
                             />
-
                             <button
                                 onClick={() => handleSend()}
-                                disabled={isLoading || !input.trim() || !canAct}
-                                className="w-24 shrink-0 bg-dnd-gold hover:bg-yellow-400 text-dnd-dark font-bold rounded-lg shadow-lg flex flex-col items-center justify-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                                disabled={!input.trim() || !canAct}
+                                className="ml-2 text-gray-400 hover:text-white disabled:opacity-30 transition"
                             >
-                                <Send size={20} />
-                                <span className="text-xs uppercase tracking-wider font-extrabold">Actuar</span>
+                                <Send size={18} />
                             </button>
                         </div>
                     </div>
                 </div>
+            </div>
 
-                {/* JOURNAL MODAL */}
-                {showJournal && (
-                    <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-                        <div className="bg-[#f4e4bc] text-dnd-dark w-full max-w-2xl h-[80vh] rounded-lg shadow-2xl flex flex-col relative overflow-hidden font-serif border-8 border-yellow-950/80 paper-texture animate-slideUp">
+            {/* RIGHT PANEL: Scenario (Now Playing Style) */}
+            <div className="w-[350px] bg-[#121212] rounded-lg p-4 flex flex-col hidden lg:flex">
+                <div className="flex items-center justify-between mb-4 text-gray-400">
+                    <span className="font-bold text-sm hover:underline cursor-pointer decoration-white">Escenario Actual</span>
+                    <button className="hover:text-white"><X size={16} /></button>
+                </div>
 
-                            {/* Header */}
-                            <div className="p-6 border-b border-yellow-800/20 bg-yellow-900/10 flex justify-between items-center shadow-sm">
-                                <h2 className="text-3xl font-fantasy text-yellow-900 flex items-center gap-3 drop-shadow-sm">
-                                    <Book size={32} className="text-yellow-800" />
-                                    Diario de Aventuras
-                                </h2>
-                                <button
-                                    onClick={() => setShowJournal(false)}
-                                    className="text-yellow-900/60 hover:text-red-700 hover:bg-yellow-900/20 p-2 rounded-full transition"
-                                >
-                                    <X size={28} />
-                                </button>
-                            </div>
+                {/* Cover Image */}
+                <div className="w-full aspect-square bg-[#282828] rounded-lg mb-4 overflow-hidden relative group shadow-lg">
+                    <img
+                        src="https://images.unsplash.com/photo-1519074069444-1ba4fff66d16?q=80&w=600&auto=format&fit=crop"
+                        alt="Location"
+                        className="w-full h-full object-cover opacity-80 group-hover:scale-105 transition duration-700"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-[#121212] to-transparent opacity-60"></div>
+                </div>
 
-                            {/* Content */}
-                            <div className="flex-1 overflow-y-auto p-8 space-y-10 scrollbar-thin scrollbar-thumb-yellow-900/30 scrollbar-track-transparent">
+                {/* Title Info */}
+                <div className="mb-6">
+                    <h2 className="text-2xl font-bold text-white mb-1 hover:underline decoration-2 cursor-pointer">{location}</h2>
+                    <p className="text-sm text-gray-400">Contexto Narrativo</p>
+                </div>
 
-                                {journalEntries.length === 0 ? (
-                                    <div className="flex flex-col items-center justify-center h-full opacity-40 text-yellow-900">
-                                        <Book size={64} className="mb-4 text-yellow-900/50" />
-                                        <p className="text-xl font-fantasy">Las páginas están vacías...</p>
-                                        <p className="text-sm font-sans mt-2">La aventura apenas comienza.</p>
+                {/* Description Body (Lyrics Style) */}
+                <div className="flex-1 overflow-y-auto bg-[#181818] rounded-lg p-4 custom-scrollbar">
+                    {latestSummary ? (
+                        <div className="text-lg font-bold text-white leading-relaxed">
+                            {renderMarkdown(latestSummary)}
+                        </div>
+                    ) : (
+                        <div className="h-full flex flex-col items-center justify-center text-gray-600 text-center gap-2">
+                            <span className="text-4xl">🎵</span>
+                            <p className="text-sm">Esperando historia...</p>
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            {/* JOURNAL MODAL (unchanged logic, just z-index check) */}
+            {showJournal && (
+                <div className="fixed inset-0 bg-black/80 z-[60] flex items-center justify-center p-4 backdrop-blur-sm">
+                    <div className="bg-[#121212] text-white w-full max-w-2xl h-[80vh] rounded-xl shadow-2xl flex flex-col relative overflow-hidden border border-gray-800">
+                        <div className="p-6 border-b border-gray-800 flex justify-between items-center bg-[#181818]">
+                            <h2 className="text-xl font-bold flex items-center gap-3">
+                                <Book size={20} className="text-green-500" />
+                                Diario de Aventuras
+                            </h2>
+                            <button onClick={() => setShowJournal(false)}><X size={24} className="text-gray-400 hover:text-white" /></button>
+                        </div>
+                        <div className="flex-1 overflow-y-auto p-8 space-y-8">
+                            {journalEntries.map((entry, idx) => (
+                                <div key={entry.id}>
+                                    <h3 className="text-xl font-bold mb-2 text-white">{entry.title}</h3>
+                                    <div className="text-gray-300 leading-relaxed font-sans text-base">
+                                        {renderMarkdown(entry.summary_text)}
                                     </div>
-                                ) : (
-                                    journalEntries.map((entry, idx) => (
-                                        <div key={entry.id} className="animate-fadeIn relative">
-                                            {/* Chapter Number/Title */}
-                                            <div className="flex items-baseline justify-between border-b-2 border-yellow-900/20 mb-3 pb-1">
-                                                <h3 className="text-2xl font-bold text-yellow-900">
-                                                    {entry.title || `Capítulo ${journalEntries.length - idx}`}
-                                                </h3>
-                                                <span className="text-xs text-yellow-900/60 font-sans uppercase tracking-widest">
-                                                    {new Date(entry.created_at).toLocaleString()}
-                                                </span>
-                                            </div>
-
-                                            {/* Drop Cap Text */}
-                                            <div className="prose prose-yellow max-w-none text-lg text-yellow-950/90 leading-relaxed text-justify first-letter:text-5xl first-letter:font-fantasy first-letter:text-yellow-800 first-letter:mr-2 first-letter:float-left">
-                                                {renderMarkdown(entry.summary_text)}
-                                            </div>
-
-                                            {/* Divider */}
-                                            {idx < journalEntries.length - 1 && (
-                                                <div className="flex justify-center my-8 opacity-30">
-                                                    <span className="text-2xl tracking-[1em] text-yellow-900">❖ ❖ ❖</span>
-                                                </div>
-                                            )}
-                                        </div>
-                                    ))
-                                )}
-                            </div>
+                                </div>
+                            ))}
                         </div>
                     </div>
-                )}
-            </div>
+                </div>
+            )}
         </div >
     );
 };
+
 
 export default GameInterface;
